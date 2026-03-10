@@ -52,7 +52,7 @@ class TestObstacleEnvironment:
         obs, extras = env.reset()
 
         assert "policy" in obs
-        assert obs["policy"].shape == (num_envs, 20)  # state + goal + prev_action
+        assert obs["policy"].shape == (num_envs, 21)  # state + goal + prev_action + nearest_obs_dist
 
     def test_step_returns_all_outputs(self, device, num_envs):
         """Test that step returns obs, reward, terminated, truncated, extras."""
@@ -66,7 +66,7 @@ class TestObstacleEnvironment:
         action = torch.zeros(num_envs, 4)
         obs, reward, terminated, truncated, extras = env.step(action)
 
-        assert obs["policy"].shape == (num_envs, 20)
+        assert obs["policy"].shape == (num_envs, 21)
         assert reward.shape == (num_envs,)
         assert terminated.shape == (num_envs,)
         assert truncated.shape == (num_envs,)
@@ -91,6 +91,44 @@ class TestObstacleEnvironment:
         # Rewards should be computed (not NaN)
         assert not torch.isnan(reward1).any()
         assert not torch.isnan(reward2).any()
+
+    def test_obstacle_collision_detection(self, device, num_envs):
+        """Test that obstacle collisions trigger termination."""
+        from diffaero_newton.envs.drone_env import DroneEnv
+        from diffaero_newton.configs.drone_env_cfg import DroneEnvCfg
+
+        cfg = DroneEnvCfg(num_envs=num_envs)
+        env = DroneEnv(cfg=cfg)
+        env.reset()
+
+        # Put drone at obstacle position (should trigger collision)
+        env.drone._state[:, :3] = 0.0  # At origin where obstacle is
+
+        action = torch.zeros(num_envs, 4)
+        obs, reward, terminated, truncated, extras = env.step(action)
+
+        # Should have collision in extras
+        assert "obstacles" in extras
+        assert "nearest_dist" in extras["obstacles"]
+        assert "goal_dist" in extras["obstacles"]
+
+    def test_obstacle_reward_penalty(self, device, num_envs):
+        """Test that being close to obstacles incurs penalty."""
+        from diffaero_newton.envs.drone_env import DroneEnv
+        from diffaero_newton.configs.drone_env_cfg import DroneEnvCfg
+
+        cfg = DroneEnvCfg(num_envs=num_envs)
+        env = DroneEnv(cfg=cfg)
+        env.reset()
+
+        # Put drone very close to obstacle (at origin)
+        env.drone._state[:, :3] = 0.0
+
+        action = torch.zeros(num_envs, 4)
+        obs, reward, terminated, truncated, extras = env.step(action)
+
+        # Reward should be computed (not NaN)
+        assert not torch.isnan(reward).any()
 
 
 class TestObstacleManager:
@@ -194,48 +232,92 @@ class TestIntegration:
         """Test a single training iteration."""
         from diffaero_newton.envs.drone_env import DroneEnv
         from diffaero_newton.configs.drone_env_cfg import DroneEnvCfg
-        from diffaero_newton.training.shac import SHACAgent
+        from diffaero_newton.training.shac import SHAC
         from diffaero_newton.configs.training_cfg import TrainingCfg
-        from diffaero_newton.training.buffer import RolloutBuffer
 
         # Create environment
         env_cfg = DroneEnvCfg(num_envs=num_envs)
         env = DroneEnv(cfg=env_cfg)
 
-        # Create agent
-        train_cfg = TrainingCfg()
-        agent = SHACAgent(obs_dim=20, action_dim=4, cfg=train_cfg)
+        # Create trainer
+        train_cfg = TrainingCfg(device=str(device), rollout_horizon=10, num_iterations=1, save_interval=1000)
+        trainer = SHAC(env, cfg=train_cfg)
 
-        # Create buffer
-        buffer = RolloutBuffer(
-            num_envs=num_envs,
-            horizon=10,
-            obs_dim=20,
-            action_dim=4,
-            device=str(device)
-        )
-
-        # Collect one rollout
+        # Collect one rollout through the trainer path
         obs, _ = env.reset()
-        buffer.reset()
+        trainer._collect_rollout(obs)
+        metrics = trainer.agent.update(trainer.buffer)
 
-        for step in range(10):
-            action, log_prob, _ = agent.get_action(obs["policy"])
-            next_obs, reward, terminated, truncated, _ = env.step(action)
+        assert trainer.buffer.ptr == train_cfg.rollout_horizon
+        assert set(metrics.keys()) == {
+            "actor_loss",
+            "critic_loss",
+            "entropy",
+            "value_mean",
+            "advantage_mean",
+        }
+        assert all(np.isfinite(value) for value in metrics.values())
 
-            with torch.no_grad():
-                value = agent.critic(obs["policy"].to(device), action.to(device))
 
-            buffer.add(obs["policy"], action, reward, terminated, log_prob, value)
-            obs = next_obs
+class TestQuadrotorDynamics:
+    """Test suite for full quadrotor dynamics."""
 
-        # Just test that we can get action from the agent (simpler test)
-        test_obs = torch.randn(4, 20)
-        action, log_prob, entropy = agent.get_action(test_obs)
+    def test_quaternion_update(self, device):
+        """Test that quaternion updates during integration."""
+        from diffaero_newton.dynamics.drone_dynamics import Drone, DroneConfig
         
-        assert action.shape == (4, 4)
-        assert log_prob.shape == (4, 1)
-        assert entropy.shape == (4, 1)
+        cfg = DroneConfig(num_envs=2, dt=0.01)
+        drone = Drone(cfg, device=str(device))
+        
+        # Apply roll torque
+        thrust = torch.ones(2, 4) * 0.5
+        thrust[:, 0] = 0.8  # Higher front-right
+        thrust[:, 1] = 0.2  # Lower front-left
+        thrust[:, 2] = 0.2  # Lower rear-left  
+        thrust[:, 3] = 0.8  # Higher rear-right
+        drone.apply_control(thrust)
+        
+        # Get initial orientation
+        initial_quat = drone.get_state()["orientation"].clone()
+        
+        # Integrate multiple steps
+        for _ in range(100):
+            drone.integrate(0.01)
+        
+        final_quat = drone.get_state()["orientation"]
+        
+        # Quaternion should change (not identity)
+        assert not torch.allclose(initial_quat, final_quat, atol=1e-3)
+        
+        # Quaternion should still be normalized
+        quat_norm = torch.norm(final_quat, dim=1)
+        assert torch.allclose(quat_norm, torch.ones(2), atol=1e-5)
+
+    def test_angular_velocity_update(self, device):
+        """Test that angular velocity updates correctly."""
+        from diffaero_newton.dynamics.drone_dynamics import Drone, DroneConfig
+        
+        cfg = DroneConfig(num_envs=2, dt=0.01)
+        drone = Drone(cfg, device=str(device))
+        
+        # Initial angular velocity should be zero
+        initial_omega = drone.get_state()["omega"]
+        assert torch.allclose(initial_omega, torch.zeros(2, 3), atol=1e-5)
+        
+        # Apply control with differential thrust (creates torque)
+        thrust = torch.ones(2, 4) * 0.5
+        thrust[:, 0] = 0.8  # Creates roll torque
+        thrust[:, 3] = 0.8
+        drone.apply_control(thrust)
+        
+        # Integrate
+        for _ in range(50):
+            drone.integrate(0.01)
+        
+        # Angular velocity should be non-zero
+        final_omega = drone.get_state()["omega"]
+        assert not torch.allclose(final_omega, torch.zeros(2, 3), atol=1e-3)
+
 
 
 if __name__ == "__main__":

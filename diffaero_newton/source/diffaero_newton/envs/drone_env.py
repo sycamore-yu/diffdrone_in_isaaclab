@@ -15,6 +15,8 @@ from gymnasium import spaces
 
 from diffaero_newton.configs.drone_env_cfg import DroneEnvCfg
 from diffaero_newton.dynamics.drone_dynamics import Drone, DroneConfig
+from diffaero_newton.tasks.obstacle_manager import ObstacleManager
+from diffaero_newton.configs.obstacle_task_cfg import ObstacleTaskCfg
 from diffaero_newton.common.constants import (
     DEFAULT_DT,
     MAX_EPISODE_LENGTH_S,
@@ -76,7 +78,7 @@ class DroneEnv(gym.Env):
             dt=self.physics_dt,
             requires_grad=False,
         )
-        self.drone = Drone(drone_cfg)
+        self.drone = Drone(drone_cfg, device=self.device)
         self.drone.reset_states()
 
         # State buffers
@@ -94,13 +96,27 @@ class DroneEnv(gym.Env):
         # Previous action for action rate penalty
         self.prev_actions = torch.zeros_like(self.actions)
 
+        # Obstacle manager for obstacle avoidance task
+        obstacle_cfg = ObstacleTaskCfg(num_obstacles=self.cfg.num_obstacles)
+        self.obstacle_manager = ObstacleManager(
+            num_envs=self.num_envs,
+            cfg=obstacle_cfg,
+            device=self.device
+        )
+
+        # Diagnostic buffers
+        self.collision_count = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
+        self.nearest_obstacle_dist = torch.zeros(self.num_envs, device=self.device)
+        self.goal_dist = torch.zeros(self.num_envs, device=self.device)
+
         # Configure gym spaces
         self._configure_spaces()
 
     def _configure_spaces(self):
         """Configure action and observation spaces."""
-        # Observation: [pos(3), vel(3), quat(4), omega(3), goal(3), prev_action(4)] = 20
-        obs_dim = 13 + 3 + 4  # state + goal + prev_action
+        # Observation: [pos(3), vel(3), quat(4), omega(3), goal(3), prev_action(4), nearest_obs_dist(1)] = 21
+        # Added: nearest obstacle distance
+        obs_dim = 13 + 3 + 4 + 1  # state + goal + prev_action + nearest_obs_dist
 
         self.observation_space = spaces.Box(
             low=-10.0,
@@ -119,14 +135,22 @@ class DroneEnv(gym.Env):
 
     def _sample_goals(self):
         """Sample random goal positions."""
+        self._sample_goals_for_envs()
+
+    def _sample_goals_for_envs(self, env_ids: Optional[torch.Tensor] = None):
+        """Sample random goal positions for selected environments."""
+        if env_ids is None:
+            env_ids = torch.arange(self.num_envs, device=self.device)
+
+        count = len(env_ids)
         # Sample goals in a sphere around origin
         radius = 3.0
-        angles = torch.rand(self.num_envs, 2, device=self.device) * 2 * math.pi
-        z_vals = torch.rand(self.num_envs, device=self.device) * 2 + 1  # z in [1, 3]
+        angles = torch.rand(count, 2, device=self.device) * 2 * math.pi
+        z_vals = torch.rand(count, device=self.device) * 2 + 1  # z in [1, 3]
 
-        self.goal_position[:, 0] = radius * torch.cos(angles[:, 0]) * torch.sin(angles[:, 1])
-        self.goal_position[:, 1] = radius * torch.sin(angles[:, 0]) * torch.sin(angles[:, 1])
-        self.goal_position[:, 2] = z_vals
+        self.goal_position[env_ids, 0] = radius * torch.cos(angles[:, 0]) * torch.sin(angles[:, 1])
+        self.goal_position[env_ids, 1] = radius * torch.sin(angles[:, 0]) * torch.sin(angles[:, 1])
+        self.goal_position[env_ids, 2] = z_vals
 
     def reset(
         self,
@@ -177,7 +201,7 @@ class DroneEnv(gym.Env):
         """
         action = action.to(self.device)
 
-        # Store previous actions
+        prev_actions = self.prev_actions.clone()
         self.prev_actions = action.clone()
 
         # Apply action through decimation steps
@@ -194,7 +218,7 @@ class DroneEnv(gym.Env):
         obs = self._get_observations()
 
         # Compute rewards (detached for RL)
-        reward = self._get_rewards()
+        reward = self._get_rewards(prev_actions)
 
         # Compute done flags
         terminated, truncated = self._get_dones()
@@ -204,11 +228,16 @@ class DroneEnv(gym.Env):
         if reset_mask.any():
             self._reset_idx(reset_mask.nonzero(as_tuple=True)[0])
 
-        # Extras
+        # Extras with obstacle diagnostics
         self.extras = {
             "episode": {
                 "r": self.reward_buf.sum().item() / self.num_envs,
                 "l": self.episode_length_buf.float().mean().item(),
+            },
+            "obstacles": {
+                "nearest_dist": self.nearest_obstacle_dist.mean().item(),
+                "goal_dist": self.goal_dist.mean().item(),
+                "collisions": self.collision_count.sum().item(),
             }
         }
 
@@ -234,16 +263,24 @@ class DroneEnv(gym.Env):
         # Goal-relative observation
         goal_rel = self.goal_position - state["position"]
 
-        # Concatenate: state + goal + prev_action
+        # Nearest obstacle distance
+        nearest_dist = self.obstacle_manager.compute_nearest_distances(state["position"])
+
+        # Concatenate: state + goal + prev_action + nearest_obstacle_dist
         obs = torch.cat([
             state_flat,
             goal_rel,
             self.prev_actions,
+            nearest_dist.unsqueeze(1),
         ], dim=1)
+
+        # Update diagnostic buffers
+        self.nearest_obstacle_dist = nearest_dist.clone()
+        self.goal_dist = torch.norm(goal_rel, dim=1)
 
         return {"policy": obs}
 
-    def _get_rewards(self) -> torch.Tensor:
+    def _get_rewards(self, prev_actions: Optional[torch.Tensor] = None) -> torch.Tensor:
         """Compute rewards (detached for RL).
 
         Returns:
@@ -256,6 +293,10 @@ class DroneEnv(gym.Env):
         goal_dist = torch.norm(self.goal_position - pos, dim=1)
         tracking_reward = torch.exp(-goal_dist / 0.5)  # Exponential decay
 
+        # Obstacle avoidance reward (penalize being close to obstacles)
+        nearest_dist = self.obstacle_manager.compute_nearest_distances(pos)
+        obstacle_penalty = -0.1 * torch.exp(-nearest_dist / 0.5)  # Higher penalty when closer
+
         # Velocity penalty (encourage slower movement)
         vel = state["velocity"]
         vel_penalty = -0.01 * torch.sum(vel ** 2, dim=1)
@@ -266,7 +307,9 @@ class DroneEnv(gym.Env):
         up_reward = quat[:, 0]  # w component
 
         # Action smoothness (penalize large changes)
-        action_penalty = -0.001 * torch.sum(self.prev_actions ** 2, dim=1)
+        if prev_actions is None:
+            prev_actions = torch.zeros_like(self.prev_actions)
+        action_penalty = -0.001 * torch.sum((self.prev_actions - prev_actions) ** 2, dim=1)
 
         # Time penalty
         time_penalty = -0.01
@@ -277,6 +320,7 @@ class DroneEnv(gym.Env):
         # Total reward
         reward = (
             tracking_reward
+            + obstacle_penalty
             + vel_penalty
             + up_reward * 0.1
             + action_penalty
@@ -298,9 +342,17 @@ class DroneEnv(gym.Env):
         state = self.drone.get_state()
         pos = state["position"]
 
-        # Termination: collision or out of bounds
         # Ground collision
-        terminated = pos[:, 2] < self.cfg.termination_height
+        ground_collision = pos[:, 2] < self.cfg.termination_height
+
+        # Obstacle collision
+        obstacle_collision = self.obstacle_manager.check_collisions(pos)
+
+        # Termination: collision or out of bounds
+        terminated = ground_collision | obstacle_collision
+
+        # Track collision count
+        self.collision_count = obstacle_collision
 
         # Time out
         truncated = self.episode_length_buf >= self.episode_length_max
@@ -316,13 +368,16 @@ class DroneEnv(gym.Env):
         # Reset drone states for these envs
         positions = torch.zeros(len(env_ids), 3, device=self.device)
         positions[:, 2] = 1.0
-        self.drone.reset_states(positions)
+        self.drone.reset_states(positions, env_ids=env_ids)
 
         # Reset episode length
         self.episode_length_buf[env_ids] = 0
 
         # Sample new goals for these envs
-        self._sample_goals()
+        self._sample_goals_for_envs(env_ids)
+
+        # Reset obstacles for these envs
+        self.obstacle_manager.reset(env_ids)
 
     def render(self):
         """Render the environment."""

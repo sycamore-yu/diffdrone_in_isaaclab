@@ -26,14 +26,15 @@ class DroneEnvCfg:
     automatic config validation and UI generation.
     """
 
-    def __init__(self, num_envs: int = 256, episode_length_s: float = MAX_EPISODE_LENGTH_S, **kwargs):
+    def __init__(self, num_envs: int = 256, episode_length_s: float = MAX_EPISODE_LENGTH_S, num_obstacles: int = 5, **kwargs):
         """Initialize config with optional overrides."""
         self.num_envs = num_envs
         self.episode_length_s = episode_length_s
+        self.num_obstacles = num_obstacles
         self.env_spacing = 2.5
         self.sim = self._default_sim_cfg()
         self.decimation = 4
-        self.observation_space = 18
+        self.observation_space = 20
         self.action_space = 4
         self.state_space = 13
         self.rollout_horizon = 10
@@ -48,6 +49,7 @@ class DroneEnvCfg:
 
     # Environment dimensions
     num_envs: int = 256
+    num_obstacles: int = 5
     env_spacing: float = 2.5
 
     # Simulation parameters
@@ -56,7 +58,7 @@ class DroneEnvCfg:
     episode_length_s: float = MAX_EPISODE_LENGTH_S
 
     # Observation and action spaces
-    observation_space: int = 18  # Base obs + goal + actions
+    observation_space: int = 21  # state(13) + goal(3) + previous action(4) + nearest_obs_dist(1)
     action_space: int = ACTION_DIM
     state_space: int = STATE_DIM
 

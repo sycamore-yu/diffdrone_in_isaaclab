@@ -210,7 +210,7 @@ class SHACAgent:
         returns, advantages = self._compute_gae(buffer)
 
         # Flatten buffer data
-        obs = buffer.obs.reshape(-1, self.obs_dim)
+        obs = buffer.obs[:-1].reshape(-1, self.obs_dim)
         actions = buffer.actions.reshape(-1, self.action_dim)
         old_log_probs = buffer.log_probs.reshape(-1, 1)
         old_values = buffer.values.reshape(-1, 1)
@@ -250,7 +250,7 @@ class SHACAgent:
         lam = self.cfg.lam
 
         rewards = buffer.rewards  # [horizon, num_envs]
-        values = buffer.values  # [horizon, num_envs]
+        values = buffer.values.squeeze(-1)  # [horizon, num_envs]
         dones = buffer.dones  # [horizon, num_envs]
 
         # Bootstrap value
@@ -266,8 +266,9 @@ class SHACAgent:
             else:
                 next_value = values[t + 1]
 
-            delta = rewards[t] + gamma * next_value.unsqueeze(-1) * (1 - dones[t]) - values[t]
-            gae = delta + gamma * lam * (1 - dones[t]).unsqueeze(-1) * gae
+            nonterminal = 1.0 - dones[t]
+            delta = rewards[t] + gamma * next_value * nonterminal - values[t]
+            gae = delta + gamma * lam * nonterminal * gae
             advantages[t] = gae
 
         # Compute returns
@@ -276,7 +277,7 @@ class SHACAgent:
         # Normalize advantages
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
-        return returns, advantages
+        return returns.reshape(-1, 1), advantages.reshape(-1, 1)
 
     def _update_critic(
         self,
@@ -425,7 +426,7 @@ class SHAC:
 
         # Create buffer
         self.buffer = RolloutBuffer(
-            num_envs=self.cfg.num_envs,
+            num_envs=env.num_envs,
             horizon=self.cfg.rollout_horizon,
             obs_dim=obs_shape[0],
             action_dim=action_shape[0],
@@ -456,7 +457,14 @@ class SHAC:
 
             self.iteration += 1
 
-    def _collect_rollout(self, obs: torch.Tensor):
+    @staticmethod
+    def _policy_obs(obs: torch.Tensor | Dict[str, torch.Tensor]) -> torch.Tensor:
+        """Extract the actor-facing observation tensor."""
+        if isinstance(obs, dict):
+            return obs["policy"]
+        return obs
+
+    def _collect_rollout(self, obs: torch.Tensor | Dict[str, torch.Tensor]):
         """Collect rollout experience.
 
         Args:
@@ -465,35 +473,33 @@ class SHAC:
         self.buffer.reset()
 
         for step in range(self.cfg.rollout_horizon):
+            policy_obs = self._policy_obs(obs)
+
             # Get action
-            action, log_prob, _ = self.agent.get_action(obs)
+            action, log_prob, _ = self.agent.get_action(policy_obs)
 
             # Step environment
             next_obs, reward, terminated, truncated, extras = self.env.step(action)
+            next_policy_obs = self._policy_obs(next_obs)
 
             # Get value
             with torch.no_grad():
                 value = self.agent.critic(
-                    obs.to(self.agent.device),
+                    policy_obs.to(self.agent.device),
                     action.to(self.agent.device)
                 )
 
             # Store in buffer
-            self.buffer.add(obs, action, reward, terminated, log_prob, value)
-
-            # Reset terminated environments
-            if terminated.any():
-                reset_mask = terminated
-                obs = next_obs.clone()
-                obs[reset_mask], _ = self.env.reset()
-            else:
-                obs = next_obs
+            self.buffer.add(policy_obs, next_policy_obs, action, reward, terminated | truncated, log_prob, value)
+            obs = next_obs
 
         # Bootstrap value for next iteration
         with torch.no_grad():
+            final_policy_obs = self._policy_obs(obs)
+            next_action, _, _ = self.agent.get_action(final_policy_obs)
             bootstrap_value = self.agent.critic(
-                obs.to(self.agent.device),
-                action.to(self.agent.device)
+                final_policy_obs.to(self.agent.device),
+                next_action.to(self.agent.device)
             )
         self.buffer.bootstrap(bootstrap_value)
 

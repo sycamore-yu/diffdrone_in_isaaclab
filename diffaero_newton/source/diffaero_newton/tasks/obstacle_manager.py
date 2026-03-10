@@ -165,7 +165,7 @@ class ObstacleManager:
             Nearest distances [num_envs].
         """
         distances = self.compute_distances(positions)  # [num_envs, num_obstacles]
-        return distances.min(dim=1)[0]
+        return distances.min(dim=1)[0].squeeze(-1)
 
     def check_collisions(
         self,

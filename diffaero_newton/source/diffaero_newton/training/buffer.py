@@ -55,6 +55,7 @@ class RolloutBuffer:
     def add(
         self,
         obs: torch.Tensor,
+        next_obs: torch.Tensor,
         action: torch.Tensor,
         reward: torch.Tensor,
         done: torch.Tensor,
@@ -65,6 +66,7 @@ class RolloutBuffer:
 
         Args:
             obs: Current observation [num_envs, obs_dim].
+            next_obs: Next observation [num_envs, obs_dim].
             action: Action taken [num_envs, action_dim].
             reward: Reward received [num_envs].
             done: Done flag [num_envs].
@@ -74,10 +76,10 @@ class RolloutBuffer:
         if self.ptr == 0:
             self.obs[0] = obs
 
-        self.obs[self.ptr + 1] = obs
+        self.obs[self.ptr + 1] = next_obs
         self.actions[self.ptr] = action
         self.rewards[self.ptr] = reward
-        self.dones[self.ptr] = done
+        self.dones[self.ptr] = done.float()
 
         if log_prob is not None:
             self.log_probs[self.ptr] = log_prob
@@ -147,9 +149,9 @@ class PrioritizedRolloutBuffer:
         self.alpha = alpha
         self.priorities = torch.zeros(horizon, num_envs, device=device)
 
-    def add(self, obs, action, reward, done, log_prob=None, value=None):
+    def add(self, obs, next_obs, action, reward, done, log_prob=None, value=None):
         """Add transition with priority."""
-        self.base_buffer.add(obs, action, reward, done, log_prob, value)
+        self.base_buffer.add(obs, next_obs, action, reward, done, log_prob, value)
         # Compute priority from TD error
         if value is not None:
             td_error = abs(reward.mean() - value.mean())
