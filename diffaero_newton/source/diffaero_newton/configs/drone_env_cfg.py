@@ -34,7 +34,7 @@ class DroneEnvCfg:
         self.env_spacing = 2.5
         self.sim = self._default_sim_cfg()
         self.decimation = 4
-        self.observation_space = 20
+        self.observation_space = 21
         self.action_space = 4
         self.state_space = 13
         self.rollout_horizon = 10

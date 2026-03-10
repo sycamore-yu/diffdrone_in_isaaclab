@@ -29,7 +29,7 @@ def compute_risk_loss(
     optimization of action sequences that minimize collision risk.
 
     Args:
-        states: State trajectory [horizon, num_envs, 13] = [pos, quat, vel, omega].
+        states: State trajectory [horizon, num_envs, 13] or [num_envs, 13]
         obstacles: Obstacle positions [num_envs, num_obstacles, 4] = [pos, radius].
         risk_weights: Weights for different risk components.
 
@@ -38,6 +38,11 @@ def compute_risk_loss(
     """
     if risk_weights is None:
         risk_weights = RiskWeights()
+
+    # Handle both [horizon, num_envs, dim] and [num_envs, dim]
+    has_horizon = states.dim() == 3
+    if not has_horizon:
+        states = states.unsqueeze(0)
 
     num_envs = states.shape[1]
     device = states.device
@@ -81,6 +86,10 @@ def compute_risk_loss(
         "proximity": proximity_loss.item(),
         "total": total_risk.item(),
     }
+    
+    # Return [num_envs] if input didn't have horizon, else scalar
+    if not has_horizon:
+        total_risk = total_risk.expand(num_envs)
 
     return total_risk, loss_components
 

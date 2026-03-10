@@ -137,4 +137,4 @@ print('OK')
 - DroneDynamics 简化为纯 PyTorch 实现（解决 Newton API 兼容性问题）
 - DroneEnvCfg 添加 `__init__` 方法
 - Gymnasium spaces 使用 numpy dtype
-- 设备统一使用 CPU（避免 CUDA tensor 不兼容）
+- 设备按 `torch.cuda.is_available()` 自动选择，并在环境与动力学对象之间保持一致

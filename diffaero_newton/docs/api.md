@@ -166,7 +166,7 @@ from diffaero_newton.configs.drone_env_cfg import DroneEnvCfg
 cfg = DroneEnvCfg(
     num_envs=256,
     episode_length_s=30.0,
-    observation_space=18,
+    observation_space=20,
     action_space=4,
     decimation=4,
 )

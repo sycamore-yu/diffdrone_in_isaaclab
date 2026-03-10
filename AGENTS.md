@@ -1,6 +1,7 @@
 # Agent Instructions
 
 This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get started.
+Use 'bd' for task tracking.
 
 ## Quick Reference
 

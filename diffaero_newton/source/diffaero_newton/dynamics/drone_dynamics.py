@@ -51,7 +51,9 @@ class Drone:
             self.num_envs, 13, device=device, requires_grad=config.requires_grad
         )
         self._state[:, 2] = 1.0  # z=1 hover
-        self._state[:, 6] = 1.0  # w quaternion (identity rotation)
+        # Initialize quaternion to identity [w=1, x=0, y=0, z=0]
+        self._state[:, 3] = 1.0  # w component
+        self._state[:, 4:7] = 0.0  # x, y, z components
 
         # Control input (4 motor thrusts)
         self._last_thrust = torch.zeros(self.num_envs, 4, device=device)
@@ -245,8 +247,10 @@ class Drone:
         pos = self._state[:, :3]
         vel = self._state[:, 7:10]
         
-        new_pos = pos + (dt / 6.0) * (k1_vel + 2*k2_vel + 2*k3_vel + k4_vel)
-        new_vel = vel + (dt / 6.0) * (k1_vel + 2*k2_vel + 2*k3_vel + k4_vel)
+        # Integrate velocity to get position (not from acceleration)
+        avg_vel = (k1_vel + 2*k2_vel + 2*k3_vel + k4_vel) / 6.0
+        new_vel = vel + avg_vel * dt
+        new_pos = pos + new_vel * dt
         
         new_quat = quat + (dt / 6.0) * (k1_quat + 2*k2_quat + 2*k3_quat + k4_quat)
         new_quat = new_quat / torch.norm(new_quat, dim=-1, keepdim=True)

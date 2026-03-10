@@ -29,15 +29,12 @@ from diffaero_newton.common.constants import (
 class DroneEnv(gym.Env):
     """A gymnasium environment for quadrotor control with differentiable physics.
 
-    This environment follows the IsaacLab DirectRLEnv pattern but uses
-    Newton for the underlying physics simulation.
+    This environment follows the IsaacLab DirectRLEnv pattern.
 
     Output channels:
-        obs: Actor-facing observation
-        state: Critic-facing global state
-        loss_terms: Differentiable loss dict for training
+        obs: Actor-facing observation (21D: state + goal + prev_action + nearest_obstacle_dist)
         reward: Detached RL signal for accounting
-        extras: Diagnostics
+        extras: Diagnostics including obstacle metrics
     """
 
     metadata = {"render_modes": [None, "human", "rgb_array"]}
@@ -190,14 +187,14 @@ class DroneEnv(gym.Env):
     def step(
         self,
         action: torch.Tensor,
-    ) -> Tuple[Dict, torch.Tensor, torch.Tensor, torch.Tensor, Dict]:
+    ) -> Tuple[Dict, Tuple[torch.Tensor, torch.Tensor], torch.Tensor, torch.Tensor, Dict]:
         """Execute one environment step.
 
         Args:
             action: Actions to apply [num_envs, 4].
 
         Returns:
-            Tuple of (observations, rewards, terminated, truncated, extras).
+            Tuple of (observations, (loss, rewards), terminated, truncated, extras).
         """
         action = action.to(self.device)
 
@@ -222,11 +219,16 @@ class DroneEnv(gym.Env):
 
         # Compute done flags
         terminated, truncated = self._get_dones()
+        reset_mask = terminated | truncated
+        
+        # Save before-reset state and reset flag
+        next_obs_before_reset = obs["policy"].clone()
 
         # Reset terminated environments
-        reset_mask = terminated | truncated
         if reset_mask.any():
             self._reset_idx(reset_mask.nonzero(as_tuple=True)[0])
+            # Recompute observation after reset for the returning variables
+            obs = self._get_observations()
 
         # Extras with obstacle diagnostics
         self.extras = {
@@ -238,10 +240,15 @@ class DroneEnv(gym.Env):
                 "nearest_dist": self.nearest_obstacle_dist.mean().item(),
                 "goal_dist": self.goal_dist.mean().item(),
                 "collisions": self.collision_count.sum().item(),
-            }
+            },
+            "reset": reset_mask,
+            "next_obs_before_reset": next_obs_before_reset
         }
 
-        return obs, reward, terminated, truncated, self.extras
+        # Loss is negative reward conceptually, in SHAC minimizing loss = maximizing reward
+        loss = -reward
+
+        return obs, (loss, reward), terminated, truncated, self.extras
 
     def _get_observations(self) -> Dict[str, torch.Tensor]:
         """Compute observations.

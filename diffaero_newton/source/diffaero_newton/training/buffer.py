@@ -41,10 +41,20 @@ class RolloutBuffer:
         # Allocate storage
         self.obs = torch.zeros(horizon + 1, num_envs, obs_dim, device=device)
         self.actions = torch.zeros(horizon, num_envs, action_dim, device=device)
-        self.rewards = torch.zeros(horizon, num_envs, device=device)
+        # Buffer for masks corresponding to IsaacLab done tuple components
         self.dones = torch.zeros(horizon, num_envs, device=device)
+        self.terminations = torch.zeros(horizon, num_envs, device=device)
+        self.resets = torch.zeros(horizon, num_envs, device=device)
+        
+        # Policy output buffers
         self.log_probs = torch.zeros(horizon, num_envs, 1, device=device)
+        
+        # Rewards
+        self.rewards = torch.zeros(horizon, num_envs, device=device)
+        
+        # Critic values representing V(obs)
         self.values = torch.zeros(horizon, num_envs, 1, device=device)
+        self.next_values = torch.zeros(horizon, num_envs, 1, device=device)
 
         # Bootstrap value (value at final state)
         self.bootstrap_values = torch.zeros(num_envs, 1, device=device)
@@ -59,8 +69,11 @@ class RolloutBuffer:
         action: torch.Tensor,
         reward: torch.Tensor,
         done: torch.Tensor,
+        terminated: torch.Tensor = None,
+        reset: torch.Tensor = None,
         log_prob: Optional[torch.Tensor] = None,
         value: Optional[torch.Tensor] = None,
+        next_value: Optional[torch.Tensor] = None,
     ):
         """Add a transition to the buffer.
 
@@ -83,8 +96,18 @@ class RolloutBuffer:
 
         if log_prob is not None:
             self.log_probs[self.ptr] = log_prob
+            
         if value is not None:
             self.values[self.ptr] = value
+            
+        if next_value is not None:
+            self.next_values[self.ptr] = next_value
+            
+        if terminated is not None:
+            self.terminations[self.ptr] = terminated.flatten().float()
+            
+        if reset is not None:
+            self.resets[self.ptr] = reset.flatten().float()
 
         self.ptr += 1
 

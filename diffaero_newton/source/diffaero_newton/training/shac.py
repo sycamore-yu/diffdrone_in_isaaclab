@@ -96,21 +96,19 @@ class Critic(nn.Module):
     def __init__(
         self,
         obs_dim: int,
-        action_dim: int = ACTION_DIM,
         hidden_dims: list = [256, 256, 128],
     ):
         """Initialize critic network.
 
         Args:
             obs_dim: Observation dimension.
-            action_dim: Action dimension.
             hidden_dims: Hidden layer dimensions.
         """
         super().__init__()
 
         # Q-function: obs + action -> Q value
         layers = []
-        in_dim = obs_dim + action_dim
+        in_dim = obs_dim
         for hidden_dim in hidden_dims:
             layers.append(nn.Linear(in_dim, hidden_dim))
             layers.append(nn.ELU())
@@ -120,17 +118,16 @@ class Critic(nn.Module):
 
         self.network = nn.Sequential(*layers)
 
-    def forward(self, obs: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
+    def forward(self, obs: torch.Tensor) -> torch.Tensor:
         """Forward pass.
 
         Args:
             obs: Observation [batch, obs_dim].
-            action: Action [batch, action_dim].
 
         Returns:
-            Q-value [batch, 1].
+            V-value [batch, 1].
         """
-        return self.network(torch.cat([obs, action], dim=-1))
+        return self.network(obs)
 
 
 class SHACAgent:
@@ -155,8 +152,8 @@ class SHACAgent:
 
         # Networks
         self.actor = Actor(obs_dim, action_dim, self.cfg.actor_hidden_dims, self.cfg.actor_log_std_init)
-        self.critic = Critic(obs_dim, action_dim, self.cfg.critic_hidden_dims)
-        self.target_critic = Critic(obs_dim, action_dim, self.cfg.critic_hidden_dims)
+        self.critic = Critic(obs_dim, self.cfg.critic_hidden_dims)
+        self.target_critic = Critic(obs_dim, self.cfg.critic_hidden_dims)
 
         # Copy weights to target
         self.target_critic.load_state_dict(self.critic.state_dict())
@@ -296,11 +293,11 @@ class SHACAgent:
             Critic loss value.
         """
         obs = obs.to(self.device)
-        actions = actions.to(self.device)
+        # actions = actions.to(self.device) # Actions are not used by V-function critic
         returns = returns.to(self.device)
 
         # Current Q values
-        values = self.critic(obs, actions)
+        values = self.critic(obs) # Critic now takes only obs
 
         # Compute loss
         critic_loss = F.mse_loss(values, returns)
@@ -465,43 +462,73 @@ class SHAC:
         return obs
 
     def _collect_rollout(self, obs: torch.Tensor | Dict[str, torch.Tensor]):
-        """Collect rollout experience.
+        """Collect rollout experience natively with BPTT graphs attached.
 
         Args:
             obs: Initial observation.
         """
         self.buffer.reset()
-
+        
+        # Accumulate horizon loss with detached states initialized
+        cumulated_loss = torch.zeros(self.env.num_envs, device=self.agent.device)
+        
         for step in range(self.cfg.rollout_horizon):
-            policy_obs = self._policy_obs(obs)
+            policy_obs = self._policy_obs(obs).detach()
 
-            # Get action
+            # Get action (retains graph to actor params)
             action, log_prob, _ = self.agent.get_action(policy_obs)
 
-            # Step environment
-            next_obs, reward, terminated, truncated, extras = self.env.step(action)
-            next_policy_obs = self._policy_obs(next_obs)
-
-            # Get value
+            # Step environment. 
+            # In true continuous physics SHAC, the environment is differentiable.
+            next_obs, (loss, reward), terminated, truncated, extras = self.env.step(action)
+            reset = extras["reset"]
+            next_obs_before_reset = extras["next_obs_before_reset"]
+            
+            # Values are scalar [num_envs, 1]
             with torch.no_grad():
-                value = self.agent.critic(
-                    policy_obs.to(self.agent.device),
-                    action.to(self.agent.device)
-                )
+                value = self.agent.critic(policy_obs.to(self.agent.device))
+                next_value = self.agent.critic(next_obs_before_reset.to(self.agent.device))
+                
+            # Horizon accumulation
+            gamma = self.cfg.gamma
+            # Weight is discounted by gamma steps
+            cumulated_loss = cumulated_loss + loss.to(self.agent.device) * (gamma ** step)
+
+            # When an environment terminates/truncates (resets), we must bootstrap the terminal state value
+            with torch.no_grad():
+                terminal_bootstrap = gamma ** (step + 1) * next_value.squeeze(-1)
+                
+            # We add terminal bootstrap target for Actor loss gradient flow
+            should_bootstrap = truncated & ~terminated
+            cumulated_loss = cumulated_loss - terminal_bootstrap * should_bootstrap.float().to(self.agent.device)
+
+            next_policy_obs = self._policy_obs(next_obs).detach()
 
             # Store in buffer
-            self.buffer.add(policy_obs, next_policy_obs, action, reward, terminated | truncated, log_prob, value)
+            self.buffer.add(
+                obs=policy_obs.detach(), 
+                next_obs=next_policy_obs, 
+                action=action.detach(), 
+                reward=reward.detach(), 
+                done=reset.detach(), 
+                terminated=terminated.detach(),
+                reset=reset.detach(),
+                log_prob=log_prob.detach(), 
+                value=value.detach(),
+                next_value=next_value.detach()
+            )
             obs = next_obs
 
-        # Bootstrap value for next iteration
+        # Bootstrap value for GAE critic targets
         with torch.no_grad():
             final_policy_obs = self._policy_obs(obs)
-            next_action, _, _ = self.agent.get_action(final_policy_obs)
-            bootstrap_value = self.agent.critic(
-                final_policy_obs.to(self.agent.device),
-                next_action.to(self.agent.device)
-            )
-        self.buffer.bootstrap(bootstrap_value)
+            bootstrap_value = self.agent.critic(final_policy_obs.to(self.agent.device))
+            
+        self.buffer.bootstrap(bootstrap_value.detach())
+        
+        # Finalize actor graph
+        self.buffer.cumulated_loss = cumulated_loss
+        self.buffer.actor_loss_graph = cumulated_loss.mean()
 
     def _log_metrics(self, metrics: Dict[str, float]):
         """Log training metrics.

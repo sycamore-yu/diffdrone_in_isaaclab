@@ -64,7 +64,7 @@ class TestObstacleEnvironment:
         env.reset()
 
         action = torch.zeros(num_envs, 4)
-        obs, reward, terminated, truncated, extras = env.step(action)
+        obs, (loss, reward), terminated, truncated, extras = env.step(action)
 
         assert obs["policy"].shape == (num_envs, 21)
         assert reward.shape == (num_envs,)
@@ -82,11 +82,11 @@ class TestObstacleEnvironment:
 
         # Zero action - drone should stay roughly in place
         action = torch.zeros(num_envs, 4)
-        _, reward1, _, _, _ = env.step(action)
+        _, (loss1, reward1), _, _, _ = env.step(action)
 
         # Small thrust - slight movement
         action = torch.ones(num_envs, 4) * 0.3
-        _, reward2, _, _, _ = env.step(action)
+        _, (loss2, reward2), _, _, _ = env.step(action)
 
         # Rewards should be computed (not NaN)
         assert not torch.isnan(reward1).any()
@@ -125,7 +125,7 @@ class TestObstacleEnvironment:
         env.drone._state[:, :3] = 0.0
 
         action = torch.zeros(num_envs, 4)
-        obs, reward, terminated, truncated, extras = env.step(action)
+        obs, (loss, reward), terminated, truncated, extras = env.step(action)
 
         # Reward should be computed (not NaN)
         assert not torch.isnan(reward).any()
@@ -205,7 +205,7 @@ class TestTraining:
         from diffaero_newton.configs.training_cfg import TrainingCfg
 
         cfg = TrainingCfg()
-        agent = SHACAgent(obs_dim=20, action_dim=4, cfg=cfg)
+        agent = SHACAgent(obs_dim=20, cfg=cfg)
 
         assert agent is not None
 
@@ -215,7 +215,7 @@ class TestTraining:
         from diffaero_newton.configs.training_cfg import TrainingCfg
 
         cfg = TrainingCfg()
-        agent = SHACAgent(obs_dim=20, action_dim=4, cfg=cfg)
+        agent = SHACAgent(obs_dim=20, cfg=cfg)
 
         obs = torch.randn(4, 20)
         action, log_prob, entropy = agent.get_action(obs)
