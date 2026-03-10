@@ -33,6 +33,8 @@ htmlcov/
 # Checkpoints
 checkpoints/
 *.pt
+runs/
+*.tfevents*
 
 # IDE
 .vscode/
