@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Normal
+from torch.utils.tensorboard import SummaryWriter
 
 from diffaero_newton.configs.training_cfg import TrainingCfg
 from diffaero_newton.training.buffer import RolloutBuffer
@@ -80,7 +81,7 @@ class Actor(nn.Module):
 
         std = log_std.exp()
         dist = Normal(mean, std)
-        action = dist.sample()
+        action = dist.rsample()
         log_prob = dist.log_prob(action).sum(dim=-1, keepdim=True)
         entropy = dist.entropy().sum(dim=-1, keepdim=True)
 
@@ -157,6 +158,8 @@ class SHACAgent:
 
         # Copy weights to target
         self.target_critic.load_state_dict(self.critic.state_dict())
+        for param in self.target_critic.parameters():
+            param.requires_grad_(False)
 
         # Optimizers
         self.actor_optimizer = torch.optim.Adam(
@@ -203,20 +206,18 @@ class SHACAgent:
         Returns:
             Dictionary of training metrics.
         """
-        # Compute returns and advantages
+        # Compute returns and advantages from detached per-step losses.
         returns, advantages = self._compute_gae(buffer)
 
         # Flatten buffer data
         obs = buffer.obs[:-1].reshape(-1, self.obs_dim)
-        actions = buffer.actions.reshape(-1, self.action_dim)
-        old_log_probs = buffer.log_probs.reshape(-1, 1)
         old_values = buffer.values.reshape(-1, 1)
 
-        # Update critic
-        critic_loss = self._update_critic(obs, actions, returns)
+        # Update actor from differentiable short-horizon loss.
+        actor_loss, entropy = self._update_actor(buffer)
 
-        # Update actor
-        actor_loss, entropy = self._update_actor(obs, actions, old_log_probs, advantages)
+        # Update critic on detached targets.
+        critic_loss = self._update_critic(obs, returns)
 
         # Update target critic (soft update)
         self._soft_update_target()
@@ -246,26 +247,21 @@ class SHACAgent:
         gamma = self.cfg.gamma
         lam = self.cfg.lam
 
-        rewards = buffer.rewards  # [horizon, num_envs]
+        losses = buffer.losses  # [horizon, num_envs]
         values = buffer.values.squeeze(-1)  # [horizon, num_envs]
-        dones = buffer.dones  # [horizon, num_envs]
-
-        # Bootstrap value
-        last_value = buffer.bootstrap_values.squeeze(-1)  # [num_envs]
+        next_values = buffer.next_values.squeeze(-1)  # [horizon, num_envs]
+        resets = buffer.resets  # [horizon, num_envs]
+        terminations = buffer.terminations  # [horizon, num_envs]
 
         # Compute advantages
-        advantages = torch.zeros_like(rewards)
+        advantages = torch.zeros_like(losses)
 
-        gae = torch.zeros_like(rewards[0])  # [num_envs]
-        for t in reversed(range(len(rewards))):
-            if t == len(rewards) - 1:
-                next_value = last_value
-            else:
-                next_value = values[t + 1]
-
-            nonterminal = 1.0 - dones[t]
-            delta = rewards[t] + gamma * next_value * nonterminal - values[t]
-            gae = delta + gamma * lam * nonterminal * gae
+        gae = torch.zeros_like(losses[0])  # [num_envs]
+        for t in reversed(range(len(losses))):
+            nonterminal = 1.0 - terminations[t]
+            nonreset = 1.0 - resets[t]
+            delta = losses[t] + gamma * next_values[t] * nonterminal - values[t]
+            gae = delta + gamma * lam * nonreset * gae
             advantages[t] = gae
 
         # Compute returns
@@ -279,25 +275,21 @@ class SHACAgent:
     def _update_critic(
         self,
         obs: torch.Tensor,
-        actions: torch.Tensor,
         returns: torch.Tensor,
     ) -> float:
         """Update critic network.
 
         Args:
             obs: Observations.
-            actions: Actions.
             returns: Returns.
 
         Returns:
             Critic loss value.
         """
         obs = obs.to(self.device)
-        # actions = actions.to(self.device) # Actions are not used by V-function critic
         returns = returns.to(self.device)
 
-        # Current Q values
-        values = self.critic(obs) # Critic now takes only obs
+        values = self.critic(obs)
 
         # Compute loss
         critic_loss = F.mse_loss(values, returns)
@@ -310,51 +302,18 @@ class SHACAgent:
 
         return critic_loss.item()
 
-    def _update_actor(
-        self,
-        obs: torch.Tensor,
-        actions: torch.Tensor,
-        old_log_probs: torch.Tensor,
-        advantages: torch.Tensor,
-    ) -> Tuple[float, float]:
-        """Update actor network.
+    def _update_actor(self, buffer: RolloutBuffer) -> Tuple[float, float]:
+        """Update actor from the differentiable short-horizon loss graph."""
+        if buffer.actor_loss_graph is None:
+            raise RuntimeError("Rollout buffer does not contain an actor loss graph.")
 
-        Args:
-            obs: Observations.
-            actions: Actions.
-            old_log_probs: Old log probabilities.
-            advantages: Advantages.
-
-        Returns:
-            Tuple of (actor loss, entropy).
-        """
-        obs = obs.to(self.device)
-        actions = actions.to(self.device)
-        old_log_probs = old_log_probs.to(self.device)
-        advantages = advantages.to(self.device)
-
-        # Get current action distribution
-        action, log_probs, entropy = self.actor.get_action(obs)
-
-        # Compute policy loss (PPO-style clipped objective)
-        ratio = torch.exp(log_probs - old_log_probs)
-        surr1 = ratio * advantages
-        surr2 = torch.clamp(ratio, 1 - self.cfg.clip_epsilon, 1 + self.cfg.clip_epsilon) * advantages
-        policy_loss = -torch.min(surr1, surr2).mean()
-
-        # Entropy bonus
-        entropy_loss = -entropy.mean()
-
-        # Total loss
-        actor_loss = policy_loss + self.cfg.entropy_coef * entropy_loss
-
-        # Optimize
         self.actor_optimizer.zero_grad()
+        actor_loss = buffer.actor_loss_graph
         actor_loss.backward()
         torch.nn.utils.clip_grad_norm_(self.actor.parameters(), self.cfg.max_grad_norm)
         self.actor_optimizer.step()
 
-        return actor_loss.item(), entropy.mean().item()
+        return actor_loss.detach().item(), buffer.mean_entropy.detach().item()
 
     def _soft_update_target(self):
         """Soft update target critic network."""
@@ -432,27 +391,37 @@ class SHAC:
 
         # Training state
         self.iteration = 0
+        self.last_extras = {}
+        self.writer = SummaryWriter(self.cfg.log_dir) if self.cfg.enable_tensorboard else None
 
     def train(self):
         """Run training loop."""
         obs, _ = self.env.reset()
 
-        while self.iteration < self.cfg.num_iterations:
-            # Collect rollout
-            self._collect_rollout(obs)
+        try:
+            while self.iteration < self.cfg.num_iterations:
+                # Collect rollout
+                obs = self._collect_rollout(obs)
 
-            # Update agent
-            metrics = self.agent.update(self.buffer)
+                # Update agent
+                metrics = self.agent.update(self.buffer)
 
-            # Log
-            if self.iteration % self.cfg.log_interval == 0:
-                self._log_metrics(metrics)
+                # Log
+                if self.iteration % self.cfg.log_interval == 0:
+                    self._log_metrics(metrics)
 
-            # Save
-            if self.iteration % self.cfg.save_interval == 0:
-                self._save_checkpoint()
+                # Save
+                if self.iteration % self.cfg.save_interval == 0:
+                    self._save_checkpoint()
 
-            self.iteration += 1
+                if hasattr(self.env, "detach_graph"):
+                    self.env.detach_graph()
+
+                self.iteration += 1
+        finally:
+            if self.writer is not None:
+                self.writer.flush()
+                self.writer.close()
 
     @staticmethod
     def _policy_obs(obs: torch.Tensor | Dict[str, torch.Tensor]) -> torch.Tensor:
@@ -469,38 +438,39 @@ class SHAC:
         """
         self.buffer.reset()
         
-        # Accumulate horizon loss with detached states initialized
+        # Accumulate horizon loss while preserving graph across the rollout.
         cumulated_loss = torch.zeros(self.env.num_envs, device=self.agent.device)
+        entropy_accum = torch.zeros(self.env.num_envs, device=self.agent.device)
         
         for step in range(self.cfg.rollout_horizon):
-            policy_obs = self._policy_obs(obs).detach()
+            policy_obs = self._policy_obs(obs)
 
             # Get action (retains graph to actor params)
-            action, log_prob, _ = self.agent.get_action(policy_obs)
+            action, log_prob, entropy = self.agent.get_action(policy_obs)
 
-            # Step environment. 
-            # In true continuous physics SHAC, the environment is differentiable.
             next_obs, (loss, reward), terminated, truncated, extras = self.env.step(action)
             reset = extras["reset"]
             next_obs_before_reset = extras["next_obs_before_reset"]
+            self.last_extras = extras
             
-            # Values are scalar [num_envs, 1]
             with torch.no_grad():
-                value = self.agent.critic(policy_obs.to(self.agent.device))
-                next_value = self.agent.critic(next_obs_before_reset.to(self.agent.device))
+                value = self.agent.critic(policy_obs.detach().to(self.agent.device))
+
+            next_value_graph = self.agent.target_critic(next_obs_before_reset.to(self.agent.device))
+            next_value = next_value_graph.detach()
                 
             # Horizon accumulation
             gamma = self.cfg.gamma
-            # Weight is discounted by gamma steps
             cumulated_loss = cumulated_loss + loss.to(self.agent.device) * (gamma ** step)
+            entropy_accum = entropy_accum + entropy.squeeze(-1)
 
-            # When an environment terminates/truncates (resets), we must bootstrap the terminal state value
-            with torch.no_grad():
-                terminal_bootstrap = gamma ** (step + 1) * next_value.squeeze(-1)
-                
-            # We add terminal bootstrap target for Actor loss gradient flow
-            should_bootstrap = truncated & ~terminated
-            cumulated_loss = cumulated_loss - terminal_bootstrap * should_bootstrap.float().to(self.agent.device)
+            is_rollout_end = step == self.cfg.rollout_horizon - 1
+            if is_rollout_end:
+                should_bootstrap = ~terminated
+            else:
+                should_bootstrap = truncated & ~terminated
+            terminal_bootstrap = (gamma ** (step + 1)) * next_value_graph.squeeze(-1)
+            cumulated_loss = cumulated_loss + terminal_bootstrap * should_bootstrap.float().to(self.agent.device)
 
             next_policy_obs = self._policy_obs(next_obs).detach()
 
@@ -509,6 +479,7 @@ class SHAC:
                 obs=policy_obs.detach(), 
                 next_obs=next_policy_obs, 
                 action=action.detach(), 
+                loss=loss.detach(),
                 reward=reward.detach(), 
                 done=reset.detach(), 
                 terminated=terminated.detach(),
@@ -519,16 +490,13 @@ class SHAC:
             )
             obs = next_obs
 
-        # Bootstrap value for GAE critic targets
-        with torch.no_grad():
-            final_policy_obs = self._policy_obs(obs)
-            bootstrap_value = self.agent.critic(final_policy_obs.to(self.agent.device))
-            
-        self.buffer.bootstrap(bootstrap_value.detach())
-        
         # Finalize actor graph
-        self.buffer.cumulated_loss = cumulated_loss
-        self.buffer.actor_loss_graph = cumulated_loss.mean()
+        self.buffer.actor_loss_graph = cumulated_loss.mean() - self.cfg.entropy_coef * entropy_accum.mean()
+        self.buffer.mean_entropy = entropy_accum.mean() / self.cfg.rollout_horizon
+
+        final_policy_obs = self._policy_obs(obs).detach()
+        self.buffer.bootstrap(self.agent.target_critic(final_policy_obs.to(self.agent.device)).detach())
+        return {"policy": final_policy_obs} if isinstance(obs, dict) else final_policy_obs
 
     def _log_metrics(self, metrics: Dict[str, float]):
         """Log training metrics.
@@ -539,6 +507,20 @@ class SHAC:
         print(f"Iteration {self.iteration}:")
         for key, value in metrics.items():
             print(f"  {key}: {value:.4f}")
+        if self.writer is not None:
+            for key, value in metrics.items():
+                self.writer.add_scalar(f"train/{key}", value, self.iteration)
+            episode = self.last_extras.get("episode", {})
+            obstacles = self.last_extras.get("obstacles", {})
+            if "r" in episode:
+                self.writer.add_scalar("env/episode_reward", episode["r"], self.iteration)
+            if "l" in episode:
+                self.writer.add_scalar("env/episode_length", episode["l"], self.iteration)
+            if "nearest_dist" in obstacles:
+                self.writer.add_scalar("env/nearest_obstacle_dist", obstacles["nearest_dist"], self.iteration)
+            if "collisions" in obstacles:
+                self.writer.add_scalar("env/collisions", obstacles["collisions"], self.iteration)
+            self.writer.flush()
 
     def _save_checkpoint(self):
         """Save training checkpoint."""

@@ -34,7 +34,7 @@ def compute_risk_loss(
         risk_weights: Weights for different risk components.
 
     Returns:
-        Tuple of (total_risk_loss, loss_components_dict).
+        Tuple of (per_env_risk_loss [num_envs], loss_components_dict).
     """
     if risk_weights is None:
         risk_weights = RiskWeights()
@@ -54,42 +54,27 @@ def compute_risk_loss(
     obs_positions = obstacles[:, :, :3]  # [num_envs, num_obs, 3]
     obs_radii = obstacles[:, :, 3]  # [num_envs, num_obs]
 
-    # Compute distances to nearest obstacle at each timestep
     distances = _compute_pairwise_distances(positions, obs_positions)  # [horizon, num_envs, num_obs]
-    min_distances = distances.min(dim=2)[0]  # [horizon, num_envs]
+    combined_radii = obs_radii.unsqueeze(0) + COLLISION_RADIUS
+    clearance = distances - combined_radii
 
-    # Risk components
-    collision_loss = torch.tensor(0.0, device=device)
-    proximity_loss = torch.tensor(0.0, device=device)
+    # Continuous penetration depth penalty keeps gradients informative near collision.
+    collision_loss = torch.relu(-clearance).sum(dim=2)  # [horizon, num_envs]
 
-    # Collision loss: penalty when distance < (obstacle_radius + drone_radius)
-    for t in range(positions.shape[0]):
-        combined_radii = obs_radii + COLLISION_RADIUS
-        in_collision = min_distances[t] < combined_radii.min(dim=1)[0]
-        if in_collision.any():
-            collision_loss = collision_loss + in_collision.float().sum() / num_envs
+    # Smooth warning-zone penalty outside hard contact.
+    warning_distance = max(float(RISK_DISTANCE_WARNING), 1.0e-6)
+    proximity_loss = torch.exp(-clearance / warning_distance).mean(dim=2)  # [horizon, num_envs]
 
-    # Proximity loss: smooth penalty for being close to obstacles
-    # Using exponential penalty that increases as distance decreases
-    if RISK_DISTANCE_WARNING > 0:
-        proximity_penalty = torch.exp(-min_distances / RISK_DISTANCE_WARNING)
-        proximity_loss = proximity_loss + proximity_penalty.mean()
-
-    # Total risk loss
     total_risk = (
         risk_weights.collision * collision_loss
         + risk_weights.proximity * proximity_loss
-    )
+    ).mean(dim=0)
 
     loss_components = {
-        "collision": collision_loss.item(),
-        "proximity": proximity_loss.item(),
-        "total": total_risk.item(),
+        "collision": collision_loss.mean().detach().item(),
+        "proximity": proximity_loss.mean().detach().item(),
+        "total": total_risk.mean().detach().item(),
     }
-    
-    # Return [num_envs] if input didn't have horizon, else scalar
-    if not has_horizon:
-        total_risk = total_risk.expand(num_envs)
 
     return total_risk, loss_components
 

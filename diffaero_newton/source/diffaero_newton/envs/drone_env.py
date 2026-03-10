@@ -16,6 +16,7 @@ from gymnasium import spaces
 from diffaero_newton.configs.drone_env_cfg import DroneEnvCfg
 from diffaero_newton.dynamics.drone_dynamics import Drone, DroneConfig
 from diffaero_newton.tasks.obstacle_manager import ObstacleManager
+from diffaero_newton.tasks.reward_terms import compute_risk_loss
 from diffaero_newton.configs.obstacle_task_cfg import ObstacleTaskCfg
 from diffaero_newton.common.constants import (
     DEFAULT_DT,
@@ -216,6 +217,7 @@ class DroneEnv(gym.Env):
 
         # Compute rewards (detached for RL)
         reward = self._get_rewards(prev_actions)
+        loss = self._get_loss(prev_actions)
 
         # Compute done flags
         terminated, truncated = self._get_dones()
@@ -242,11 +244,10 @@ class DroneEnv(gym.Env):
                 "collisions": self.collision_count.sum().item(),
             },
             "reset": reset_mask,
+            "terminated": terminated,
+            "truncated": truncated,
             "next_obs_before_reset": next_obs_before_reset
         }
-
-        # Loss is negative reward conceptually, in SHAC minimizing loss = maximizing reward
-        loss = -reward
 
         return obs, (loss, reward), terminated, truncated, self.extras
 
@@ -340,6 +341,26 @@ class DroneEnv(gym.Env):
 
         return reward.detach()
 
+    def _get_loss(self, prev_actions: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Compute differentiable per-env loss for actor optimization."""
+        state = self.drone.get_state()
+        flat_state = self.drone.get_flat_state()
+
+        pos = state["position"]
+        goal_dist = torch.norm(self.goal_position - pos, dim=1)
+        goal_loss = goal_dist
+
+        risk_loss, _ = compute_risk_loss(flat_state, self.obstacle_manager.obstacles)
+
+        vel_loss = 0.01 * torch.sum(state["velocity"] ** 2, dim=1)
+        up_loss = 0.05 * (1.0 - state["orientation"][:, 0].clamp(-1.0, 1.0))
+
+        if prev_actions is None:
+            prev_actions = torch.zeros_like(self.prev_actions)
+        action_rate_loss = 0.01 * torch.sum((self.prev_actions - prev_actions) ** 2, dim=1)
+
+        return goal_loss + risk_loss + vel_loss + up_loss + action_rate_loss
+
     def _get_dones(self) -> Tuple[torch.Tensor, torch.Tensor]:
         """Compute done flags.
 
@@ -394,6 +415,12 @@ class DroneEnv(gym.Env):
     def close(self):
         """Clean up resources."""
         pass
+
+    def detach_graph(self):
+        """Detach runtime tensors between training iterations."""
+        self.prev_actions = self.prev_actions.detach()
+        self.goal_position = self.goal_position.detach()
+        self.drone.detach_graph()
 
     @property
     def num_envs(self) -> int:

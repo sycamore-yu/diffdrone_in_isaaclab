@@ -27,6 +27,8 @@ def parse_args():
     parser.add_argument("--log_interval", type=int, default=1, help="Logging interval")
     parser.add_argument("--save_interval", type=int, default=100, help="Checkpoint save interval")
     parser.add_argument("--save_dir", type=str, default="checkpoints", help="Checkpoint directory")
+    parser.add_argument("--log_dir", type=str, default="runs/diffaero_newton", help="TensorBoard log directory")
+    parser.add_argument("--no_tensorboard", action="store_true", help="Disable TensorBoard logging")
 
     # Device
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
@@ -60,6 +62,8 @@ def main():
     training_cfg.log_interval = args.log_interval
     training_cfg.save_interval = args.save_interval
     training_cfg.save_dir = args.save_dir
+    training_cfg.log_dir = args.log_dir
+    training_cfg.enable_tensorboard = not args.no_tensorboard
     training_cfg.device = args.device
 
     # Create environment

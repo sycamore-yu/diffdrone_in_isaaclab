@@ -76,6 +76,8 @@ class TrainingCfg:
     save_interval: int = 100
     eval_interval: int = 10
     eval_episodes: int = 10
+    log_dir: str = "runs/diffaero_newton"
+    enable_tensorboard: bool = True
 
     # Checkpoint
     save_dir: str = "checkpoints"

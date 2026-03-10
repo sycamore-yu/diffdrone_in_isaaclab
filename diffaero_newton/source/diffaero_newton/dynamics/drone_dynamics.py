@@ -116,7 +116,7 @@ class Drone:
         return self._state
 
     def reset_states(self, positions: Optional[torch.Tensor] = None, env_ids: Optional[torch.Tensor] = None):
-        """Reset the drone to initial states."""
+        """Reset the drone to initial states without in-place modifying graph history."""
         if positions is None:
             positions = torch.zeros(self.num_envs, 3, device=self.device)
             positions[:, 2] = 1.0
@@ -127,12 +127,14 @@ class Drone:
         else:
             reset_positions = positions
 
-        self._state[env_ids, :3] = reset_positions
+        new_state = self._state.clone()
+        new_state[env_ids, :3] = reset_positions
         # Reset quaternion to identity (w=1, x=y=z=0)
-        self._state[env_ids, 3:7] = torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device)
+        new_state[env_ids, 3:7] = torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device)
         # Reset velocities
-        self._state[env_ids, 7:10] = 0.0
-        self._state[env_ids, 10:13] = 0.0
+        new_state[env_ids, 7:10] = 0.0
+        new_state[env_ids, 10:13] = 0.0
+        self._state = new_state
 
     def apply_control(self, thrust_normalized: torch.Tensor):
         """Apply control inputs (normalized thrust per motor [0,1])."""
@@ -202,11 +204,8 @@ class Drone:
         # Normalize quaternion
         quat_new = quat_new / torch.norm(quat_new, dim=-1, keepdim=True)
 
-        # Store
-        self._state[:, :3] = pos_new
-        self._state[:, 3:7] = quat_new
-        self._state[:, 7:10] = vel_new
-        self._state[:, 10:13] = omega_new
+        # Store OUT-OF-PLACE to support backpropagation through time (BPTT)
+        self._state = torch.cat([pos_new, quat_new, vel_new, omega_new], dim=1)
 
     def _rk4_step(self, dt: float):
         """Runge-Kutta 4 integration step."""
@@ -257,10 +256,8 @@ class Drone:
         
         new_omega = omega + (dt / 6.0) * (k1_omega + 2*k2_omega + 2*k3_omega + k4_omega)
         
-        self._state[:, :3] = new_pos
-        self._state[:, 3:7] = new_quat
-        self._state[:, 7:10] = new_vel
-        self._state[:, 10:13] = new_omega
+        # Store OUT-OF-PLACE to support backpropagation through time (BPTT)
+        self._state = torch.cat([new_pos, new_quat, new_vel, new_omega], dim=1)
 
     def _quat_derivative(self, quat: torch.Tensor, omega: torch.Tensor) -> torch.Tensor:
         """Compute quaternion time derivative."""
@@ -354,6 +351,11 @@ class Drone:
     def get_flat_state(self) -> torch.Tensor:
         """Get the current state as flat tensor [num_envs, 13]."""
         return self._state.clone()
+
+    def detach_graph(self):
+        """Detach runtime tensors between rollout iterations."""
+        self._state = self._state.detach()
+        self._last_thrust = self._last_thrust.detach()
 
 
 def create_drone(

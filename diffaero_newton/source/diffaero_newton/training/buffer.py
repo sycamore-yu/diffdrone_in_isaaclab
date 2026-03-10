@@ -51,6 +51,7 @@ class RolloutBuffer:
         
         # Rewards
         self.rewards = torch.zeros(horizon, num_envs, device=device)
+        self.losses = torch.zeros(horizon, num_envs, device=device)
         
         # Critic values representing V(obs)
         self.values = torch.zeros(horizon, num_envs, 1, device=device)
@@ -58,6 +59,8 @@ class RolloutBuffer:
 
         # Bootstrap value (value at final state)
         self.bootstrap_values = torch.zeros(num_envs, 1, device=device)
+        self.actor_loss_graph = None
+        self.mean_entropy = torch.tensor(0.0, device=device)
 
         self.ptr = 0
         self.path_start = 0
@@ -67,6 +70,7 @@ class RolloutBuffer:
         obs: torch.Tensor,
         next_obs: torch.Tensor,
         action: torch.Tensor,
+        loss: torch.Tensor,
         reward: torch.Tensor,
         done: torch.Tensor,
         terminated: torch.Tensor = None,
@@ -91,6 +95,7 @@ class RolloutBuffer:
 
         self.obs[self.ptr + 1] = next_obs
         self.actions[self.ptr] = action
+        self.losses[self.ptr] = loss
         self.rewards[self.ptr] = reward
         self.dones[self.ptr] = done.float()
 
@@ -122,6 +127,8 @@ class RolloutBuffer:
     def reset(self):
         """Reset the buffer for a new rollout."""
         self.ptr = 0
+        self.actor_loss_graph = None
+        self.mean_entropy = torch.tensor(0.0, device=self.device)
 
     @property
     def is_full(self) -> bool:
@@ -172,9 +179,9 @@ class PrioritizedRolloutBuffer:
         self.alpha = alpha
         self.priorities = torch.zeros(horizon, num_envs, device=device)
 
-    def add(self, obs, next_obs, action, reward, done, log_prob=None, value=None):
+    def add(self, obs, next_obs, action, loss, reward, done, log_prob=None, value=None):
         """Add transition with priority."""
-        self.base_buffer.add(obs, next_obs, action, reward, done, log_prob, value)
+        self.base_buffer.add(obs, next_obs, action, loss, reward, done, log_prob=log_prob, value=value)
         # Compute priority from TD error
         if value is not None:
             td_error = abs(reward.mean() - value.mean())

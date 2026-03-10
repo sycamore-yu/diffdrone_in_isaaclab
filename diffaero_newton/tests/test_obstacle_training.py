@@ -7,6 +7,7 @@ They will fail until the implementation is complete.
 import pytest
 import torch
 import numpy as np
+from pathlib import Path
 
 # Test fixtures
 @pytest.fixture
@@ -105,7 +106,7 @@ class TestObstacleEnvironment:
         env.drone._state[:, :3] = 0.0  # At origin where obstacle is
 
         action = torch.zeros(num_envs, 4)
-        obs, reward, terminated, truncated, extras = env.step(action)
+        obs, (loss, reward), terminated, truncated, extras = env.step(action)
 
         # Should have collision in extras
         assert "obstacles" in extras
@@ -205,7 +206,7 @@ class TestTraining:
         from diffaero_newton.configs.training_cfg import TrainingCfg
 
         cfg = TrainingCfg()
-        agent = SHACAgent(obs_dim=20, cfg=cfg)
+        agent = SHACAgent(obs_dim=21, cfg=cfg)
 
         assert agent is not None
 
@@ -215,9 +216,9 @@ class TestTraining:
         from diffaero_newton.configs.training_cfg import TrainingCfg
 
         cfg = TrainingCfg()
-        agent = SHACAgent(obs_dim=20, cfg=cfg)
+        agent = SHACAgent(obs_dim=21, cfg=cfg)
 
-        obs = torch.randn(4, 20)
+        obs = torch.randn(4, 21)
         action, log_prob, entropy = agent.get_action(obs)
 
         assert action.shape == (4, 4)
@@ -246,9 +247,22 @@ class TestIntegration:
         # Collect one rollout through the trainer path
         obs, _ = env.reset()
         trainer._collect_rollout(obs)
+        assert trainer.buffer.actor_loss_graph is not None
+        assert trainer.buffer.actor_loss_graph.requires_grad
+
+        actor_before = {
+            name: param.detach().clone()
+            for name, param in trainer.agent.actor.named_parameters()
+        }
         metrics = trainer.agent.update(trainer.buffer)
 
+        actor_changed = any(
+            not torch.allclose(actor_before[name], param.detach(), atol=1e-8)
+            for name, param in trainer.agent.actor.named_parameters()
+        )
+
         assert trainer.buffer.ptr == train_cfg.rollout_horizon
+        assert actor_changed
         assert set(metrics.keys()) == {
             "actor_loss",
             "critic_loss",
@@ -257,6 +271,77 @@ class TestIntegration:
             "advantage_mean",
         }
         assert all(np.isfinite(value) for value in metrics.values())
+
+    def test_loss_is_differentiable(self, device, num_envs):
+        """Test that env.step returns a loss tensor with gradients on the actor path."""
+        from diffaero_newton.envs.drone_env import DroneEnv
+        from diffaero_newton.configs.drone_env_cfg import DroneEnvCfg
+
+        cfg = DroneEnvCfg(num_envs=num_envs)
+        env = DroneEnv(cfg=cfg)
+        env.reset()
+
+        action = torch.full((num_envs, 4), 0.5, requires_grad=True)
+        _, (loss, _reward), _, _, _ = env.step(action)
+
+        assert loss.requires_grad
+        loss.sum().backward()
+        assert action.grad is not None
+        assert torch.isfinite(action.grad).all()
+
+    def test_bootstrap_semantics(self, device):
+        """Test truncated paths bootstrap while terminated paths do not."""
+        from diffaero_newton.envs.drone_env import DroneEnv
+        from diffaero_newton.configs.drone_env_cfg import DroneEnvCfg
+        from diffaero_newton.training.shac import SHAC
+        from diffaero_newton.configs.training_cfg import TrainingCfg
+
+        env_cfg = DroneEnvCfg(num_envs=2)
+        env = DroneEnv(cfg=env_cfg)
+        train_cfg = TrainingCfg(
+            device=str(device),
+            rollout_horizon=1,
+            num_iterations=1,
+            save_interval=1000,
+            enable_tensorboard=False,
+        )
+        trainer = SHAC(env, cfg=train_cfg)
+
+        obs, _ = env.reset()
+        env.episode_length_buf[0] = env.episode_length_max
+        env.drone._state[1, 2] = 0.0
+        trainer._collect_rollout(obs)
+
+        assert trainer.buffer.resets[0, 0].item() == 1.0
+        assert trainer.buffer.terminations[0, 0].item() == 0.0
+        assert trainer.buffer.resets[0, 1].item() == 1.0
+        assert trainer.buffer.terminations[0, 1].item() == 1.0
+
+    def test_tensorboard_logging(self, device, num_envs, tmp_path):
+        """Test that a short training run emits TensorBoard event files."""
+        from diffaero_newton.envs.drone_env import DroneEnv
+        from diffaero_newton.configs.drone_env_cfg import DroneEnvCfg
+        from diffaero_newton.training.shac import SHAC
+        from diffaero_newton.configs.training_cfg import TrainingCfg
+
+        env_cfg = DroneEnvCfg(num_envs=num_envs)
+        env = DroneEnv(cfg=env_cfg)
+        log_dir = tmp_path / "runs"
+        train_cfg = TrainingCfg(
+            device=str(device),
+            rollout_horizon=2,
+            num_iterations=2,
+            log_interval=1,
+            save_interval=1000,
+            save_dir=str(tmp_path / "checkpoints"),
+            log_dir=str(log_dir),
+            enable_tensorboard=True,
+        )
+        trainer = SHAC(env, cfg=train_cfg)
+        trainer.train()
+
+        event_files = list(Path(log_dir).rglob("events.out.tfevents*"))
+        assert event_files
 
 
 class TestQuadrotorDynamics:
