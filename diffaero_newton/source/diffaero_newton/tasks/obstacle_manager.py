@@ -193,7 +193,10 @@ class ObstacleManager:
         combined_radii = obs_radii + radii.unsqueeze(1)  # [num_envs, num_obstacles]
 
         # Compute distances
-        distances = self.compute_distances(positions)  # [num_envs, num_obstacles]
+        distances = self.compute_distances(positions)  # [num_envs, num_obstacles, 1]
+
+        # Squeeze to 2D
+        distances = distances.squeeze(-1)  # [num_envs, num_obstacles]
 
         # Check if any obstacle is within combined radius
         collisions = (distances < combined_radii).any(dim=1)

@@ -254,20 +254,20 @@ class SHACAgent:
         dones = buffer.dones  # [horizon, num_envs]
 
         # Bootstrap value
-        last_value = buffer.bootstrap_values  # [num_envs]
+        last_value = buffer.bootstrap_values.squeeze(-1)  # [num_envs]
 
         # Compute advantages
         advantages = torch.zeros_like(rewards)
 
-        gae = 0
+        gae = torch.zeros_like(rewards[0])  # [num_envs]
         for t in reversed(range(len(rewards))):
             if t == len(rewards) - 1:
                 next_value = last_value
             else:
                 next_value = values[t + 1]
 
-            delta = rewards[t] + gamma * next_value * (1 - dones[t]) - values[t]
-            gae = delta + gamma * lam * (1 - dones[t]) * gae
+            delta = rewards[t] + gamma * next_value.unsqueeze(-1) * (1 - dones[t]) - values[t]
+            gae = delta + gamma * lam * (1 - dones[t]).unsqueeze(-1) * gae
             advantages[t] = gae
 
         # Compute returns
