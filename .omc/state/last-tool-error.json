@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"source ~/miniconda3/etc/profile.d/conda.sh && conda activate isaaclab-newton && export PYTHONPATH=diffaero_newton/source && pytest -q diffaero_newton/tests/test_obstacle_training.py 2>&1\"}",
-  "error": "Exit code 1\n...F...........                                                          [100%]\n=================================== FAILURES ===================================\n______________ TestObstacleEnvironment.test_goal_tracking_reward _______________\n\nself = <test_obstacle_training.TestObstacleEnvironment object at 0x7f3027a143d0>\ndevice = device(type='cpu'), num_envs = 4\n\n    def test_goal_tracking_reward(self, device, num_envs):\n        \"\"\"Test that reward increases when moving toward goal....",
-  "timestamp": "2026-03-10T10:23:17.706Z",
-  "retry_count": 3
-}
