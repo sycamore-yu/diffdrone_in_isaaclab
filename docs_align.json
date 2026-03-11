@@ -1,0 +1,12 @@
+{
+  "id": "diffdroneinisaac_workspace-cbi",
+  "title": "Documentation and Scope Alignment",
+  "description": "Update docs/development.md to reflect the broader DiffAero scope. Deprecate progress.md in favor of bd.",
+  "status": "open",
+  "priority": 1,
+  "issue_type": "task",
+  "owner": "1723946555@qq.com",
+  "created_at": "2026-03-11T03:55:07.620734563Z",
+  "created_by": "sycamore-yu",
+  "updated_at": "2026-03-11T03:55:07.620734563Z"
+}

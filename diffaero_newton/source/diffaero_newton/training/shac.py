@@ -448,20 +448,23 @@ class SHAC:
             # Get action (retains graph to actor params)
             action, log_prob, entropy = self.agent.get_action(policy_obs)
 
-            next_obs, (loss, reward), terminated, truncated, extras = self.env.step(action)
-            reset = extras["reset"]
-            next_obs_before_reset = extras["next_obs_before_reset"]
+            next_obs, next_state, loss_terms, reward, extras = self.env.step(action)
+            terminated = extras["terminated"]
+            truncated = extras["truncated"]
+            reset = terminated | truncated
+            
             self.last_extras = extras
             
             with torch.no_grad():
                 value = self.agent.critic(policy_obs.detach().to(self.agent.device))
 
-            next_value_graph = self.agent.target_critic(next_obs_before_reset.to(self.agent.device))
+            next_policy_obs = self._policy_obs(next_obs).detach()
+            next_value_graph = self.agent.target_critic(next_policy_obs.to(self.agent.device))
             next_value = next_value_graph.detach()
                 
             # Horizon accumulation
             gamma = self.cfg.gamma
-            cumulated_loss = cumulated_loss + loss.to(self.agent.device) * (gamma ** step)
+            cumulated_loss = cumulated_loss + loss_terms.to(self.agent.device) * (gamma ** step)
             entropy_accum = entropy_accum + entropy.squeeze(-1)
 
             is_rollout_end = step == self.cfg.rollout_horizon - 1
@@ -472,14 +475,13 @@ class SHAC:
             terminal_bootstrap = (gamma ** (step + 1)) * next_value_graph.squeeze(-1)
             cumulated_loss = cumulated_loss + terminal_bootstrap * should_bootstrap.float().to(self.agent.device)
 
-            next_policy_obs = self._policy_obs(next_obs).detach()
 
             # Store in buffer
             self.buffer.add(
                 obs=policy_obs.detach(), 
                 next_obs=next_policy_obs, 
                 action=action.detach(), 
-                loss=loss.detach(),
+                loss=loss_terms.detach(),
                 reward=reward.detach(), 
                 done=reset.detach(), 
                 terminated=terminated.detach(),

@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
+项目概况、规则相关内容请在 @AGENTS.md 中维护和查看
 ## Project Overview
 
 This workspace reproduces DiffAero's key training capabilities on top of **Newton** (differentiable physics) and **IsaacLab** (scalable vectorized task orchestration):

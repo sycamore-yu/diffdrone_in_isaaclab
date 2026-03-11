@@ -1,0 +1,4 @@
+{"t":0,"agent":"system","event":"skill_invoked","skill_name":"everything-claude-code:multi-plan"}
+{"t":0,"agent":"a621457","agent_type":"unknown","event":"agent_stop","success":true}
+{"t":0,"agent":"a6a5723","agent_type":"unknown","event":"agent_stop","success":true}
+{"t":0,"agent":"system","event":"skill_invoked","skill_name":"everything-claude-code:multi-plan"}

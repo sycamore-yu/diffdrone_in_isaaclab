@@ -1,17 +1,13 @@
 """Main entry point for DiffAero Newton training."""
 
 import argparse
-import torch
-
-from diffaero_newton.envs.drone_env import DroneEnv
-from diffaero_newton.configs.drone_env_cfg import DroneEnvCfg
-from diffaero_newton.configs.training_cfg import TrainingCfg
-from diffaero_newton.training.shac import SHAC
+from isaaclab.app import AppLauncher
 
 
 def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="DiffAero Newton Training")
+    AppLauncher.add_app_launcher_args(parser)
 
     # Environment
     parser.add_argument("--num_envs", type=int, default=256, help="Number of environments")
@@ -30,8 +26,8 @@ def parse_args():
     parser.add_argument("--log_dir", type=str, default="runs/diffaero_newton", help="TensorBoard log directory")
     parser.add_argument("--no_tensorboard", action="store_true", help="Disable TensorBoard logging")
 
-    # Device
-    parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
+    # Device (IsaacLab AppLauncher already adds --device natively)
+    # The --device argument is parsed by AppLauncher
 
     return parser.parse_args()
 
@@ -39,6 +35,17 @@ def parse_args():
 def main():
     """Main training loop."""
     args = parse_args()
+    
+    # Launch IsaacLab Simulation App
+    app_launcher = AppLauncher(args)
+    simulation_app = app_launcher.app
+
+    # Import envs and configs AFTER app launcher to avoid Kit errors
+    import torch
+    from diffaero_newton.envs.drone_env import DroneEnv
+    from diffaero_newton.configs.drone_env_cfg import DroneEnvCfg
+    from diffaero_newton.configs.training_cfg import TrainingCfg
+    from diffaero_newton.training.shac import SHAC
 
     print("=" * 50)
     print("DiffAero Newton Training")
@@ -88,6 +95,7 @@ def main():
         print("\nTraining interrupted by user")
 
     print("Training complete!")
+    simulation_app.close()
 
 
 if __name__ == "__main__":

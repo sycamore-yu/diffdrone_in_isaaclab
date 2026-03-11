@@ -1,0 +1,9 @@
+{"event":"GET_STORE","baseDir":"/home/tong/tongworkspace/diffdroneinisaac_workspace","baseDirType":"string","moduleInitialized":false,"timestamp":"2026-03-11T03:21:03.480Z"}
+{"event":"MODULE_LOADED","baseDir":"/home/tong/tongworkspace/diffdroneinisaac_workspace","timestamp":"2026-03-11T03:21:03.480Z"}
+{"event":"STORE_CONSTRUCT_START","baseDir":"/home/tong/tongworkspace/diffdroneinisaac_workspace","timestamp":"2026-03-11T03:21:03.481Z"}
+{"event":"STORAGE_PATHS","baseDir":"/home/tong/tongworkspace/diffdroneinisaac_workspace","historyDir":"/home/tong/.ccw/projects/home-tong-tongworkspace-diffdroneinisaac_workspace/cli-history","historyDb":"/home/tong/.ccw/projects/home-tong-tongworkspace-diffdroneinisaac_workspace/cli-history/history.db","timestamp":"2026-03-11T03:21:03.481Z"}
+{"event":"DB_INSTANCE_CREATE","dbPath":"/home/tong/.ccw/projects/home-tong-tongworkspace-diffdroneinisaac_workspace/cli-history/history.db","timestamp":"2026-03-11T03:21:03.481Z"}
+{"event":"DB_INSTANCE_CREATED","dbPath":"/home/tong/.ccw/projects/home-tong-tongworkspace-diffdroneinisaac_workspace/cli-history/history.db","timestamp":"2026-03-11T03:21:03.484Z"}
+{"event":"INIT_SCHEMA_START","dbPath":"/home/tong/.ccw/projects/home-tong-tongworkspace-diffdroneinisaac_workspace/cli-history/history.db","timestamp":"2026-03-11T03:21:03.513Z"}
+{"event":"INIT_SCHEMA_COMPLETE","dbPath":"/home/tong/.ccw/projects/home-tong-tongworkspace-diffdroneinisaac_workspace/cli-history/history.db","timestamp":"2026-03-11T03:21:03.524Z"}
+{"event":"STORE_CONSTRUCT_COMPLETE","baseDir":"/home/tong/tongworkspace/diffdroneinisaac_workspace","dbPath":"/home/tong/.ccw/projects/home-tong-tongworkspace-diffdroneinisaac_workspace/cli-history/history.db","timestamp":"2026-03-11T03:21:03.525Z"}

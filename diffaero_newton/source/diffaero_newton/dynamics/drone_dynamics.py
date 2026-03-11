@@ -1,15 +1,15 @@
-"""Differentiable quadrotor dynamics using full quadrotor physics model.
+"""Differentiable quadrotor dynamics using Newton physics engine.
 
-This module provides a differentiable drone dynamics model with:
-- Full quaternion-based attitude dynamics
-- Angular velocity integration with inertia
-- Control allocation (motor inputs -> thrust + torque)
-- Euler/RK4 integration options
+Replaces the previous PyTorch-only RK4/Euler approach with a true Newton
+integration lifecycle.
 """
 
 from dataclasses import dataclass
 from typing import Optional
 import torch
+import warp as wp
+import newton
+import newton.solvers
 
 from diffaero_newton.common.constants import (
     GRAVITY,
@@ -18,105 +18,211 @@ from diffaero_newton.common.constants import (
     IYY,
     IZZ,
     ARM_LENGTH,
-    COLLISION_RADIUS,
     DEFAULT_DT,
 )
+
+# Initialize Warp once
+wp.init()
+
+@wp.kernel
+def compute_quadrotor_wrenches(
+    body_q: wp.array(dtype=wp.transform),
+    controls: wp.array(dtype=float, ndim=2),  # [num_envs, 4]
+    arm_length: float,
+    torque_coeff: float,
+    body_f: wp.array(dtype=wp.spatial_vector),
+):
+    tid = wp.tid()
+    c = controls[tid]
+    
+    # Motor controls are thrusts [T1, T2, T3, T4]
+    t1, t2, t3, t4 = c[0], c[1], c[2], c[3]
+    d = arm_length / 1.41421356  # d = arm_length / sqrt(2)
+    
+    total_thrust = t1 + t2 + t3 + t4
+    tau_x = d * (t1 + t4 - t2 - t3)
+    tau_y = d * (-t1 - t4 + t2 + t3)
+    tau_z = torque_coeff * (t1 + t3 - t2 - t4)
+    
+    # Body-frame forces and torques
+    force_b = wp.vec3(0.0, 0.0, total_thrust)
+    torque_b = wp.vec3(tau_x, tau_y, tau_z)
+    
+    # World frame transform
+    tf = body_q[tid]
+    
+    # Convert to world frame
+    force_w = wp.transform_vector(tf, force_b)
+    torque_w = wp.transform_vector(tf, torque_b)
+    
+    # Follow Newton convention for wrench format
+    # which packs spatial_vector(angular, linear) where angular=torque, linear=force
+    # In example_diffsim_drone it uses spatial_vector(force, torque) but that example
+    # might map angular to first arg. We use spatial_vector(force, torque) exactly as
+    # example_diffsim_drone guarantees compatibility.
+    # Wait, our script output showed spatial_vector(arg1, arg2) gives [arg1, arg2], so 
+    # arg1=angular, arg2=linear. So we must pass torque_w first.
+    wp.atomic_add(body_f, tid, wp.spatial_vector(torque_w, force_w))
+
+
+@wp.kernel
+def read_state_kernel(
+    body_q: wp.array(dtype=wp.transform),
+    body_qd: wp.array(dtype=wp.spatial_vector),
+    out_state: wp.array(dtype=float, ndim=2),
+):
+    tid = wp.tid()
+    tf = body_q[tid]
+    qd = body_qd[tid]
+    
+    pos = wp.transform_get_translation(tf)
+    quat = wp.transform_get_rotation(tf)
+    
+    # qd = spatial_vector(w, v) meaning angular then linear
+    w = wp.spatial_top(qd)      # w_x, w_y, w_z
+    v = wp.spatial_bottom(qd)   # v_x, v_y, v_z
+    
+    # state: [pos(3), quat(4: w, x, y, z), vel(3), omega(3)]
+    out_state[tid, 0] = pos[0]
+    out_state[tid, 1] = pos[1]
+    out_state[tid, 2] = pos[2]
+    
+    # PyTorch version expects [w, x, y, z]
+    out_state[tid, 3] = quat[3] # Warp quat is [x, y, z, w], index 3 is w
+    out_state[tid, 4] = quat[0]
+    out_state[tid, 5] = quat[1]
+    out_state[tid, 6] = quat[2]
+    
+    out_state[tid, 7] = v[0]
+    out_state[tid, 8] = v[1]
+    out_state[tid, 9] = v[2]
+    
+    out_state[tid, 10] = w[0]
+    out_state[tid, 11] = w[1]
+    out_state[tid, 12] = w[2]
+
+
+@wp.kernel
+def write_state_kernel(
+    in_state: wp.array(dtype=float, ndim=2),
+    body_q: wp.array(dtype=wp.transform),
+    body_qd: wp.array(dtype=wp.spatial_vector),
+):
+    tid = wp.tid()
+    
+    px = in_state[tid, 0]
+    py = in_state[tid, 1]
+    pz = in_state[tid, 2]
+    
+    # Torch uses [w, x, y, z] -> Warp uses [x, y, z, w]
+    qw = in_state[tid, 3]
+    qx = in_state[tid, 4]
+    qy = in_state[tid, 5]
+    qz = in_state[tid, 6]
+    
+    vx = in_state[tid, 7]
+    vy = in_state[tid, 8]
+    vz = in_state[tid, 9]
+    
+    wx = in_state[tid, 10]
+    wy = in_state[tid, 11]
+    wz = in_state[tid, 12]
+    
+    pos = wp.vec3(px, py, pz)
+    quat = wp.quat(qx, qy, qz, qw)
+    
+    body_q[tid] = wp.transform(pos, quat)
+    
+    # body_qd is (angular, linear)
+    w = wp.vec3(wx, wy, wz)
+    v = wp.vec3(vx, vy, vz)
+    body_qd[tid] = wp.spatial_vector(w, v)
 
 
 @dataclass
 class DroneConfig:
     """Configuration for the drone dynamics."""
-
     num_envs: int = 1
     dt: float = DEFAULT_DT
     requires_grad: bool = False
     arm_length: float = ARM_LENGTH
     mass: float = QUADROTOR_MASS
     inertia: tuple[float, float, float] = (IXX, IYY, IZZ)
-    solver_type: str = "euler"  # "euler" or "rk4"
+    solver_type: str = "semi_implicit"
     n_substeps: int = 1
 
 
 class Drone:
-    """Differentiable quadrotor dynamics with full physics."""
+    """Differentiable quadrotor dynamics backed by Newton."""
 
     def __init__(self, config: DroneConfig, device: str = "cpu"):
-        """Initialize the drone dynamics."""
         self.config = config
         self.num_envs = config.num_envs
         self.device = device
+        
+        # Keep device string standard (e.g. 'cuda:0' or just 'cuda')
+        self.wp_device = wp.get_device(device)
 
-        # State: [pos(3), quat(4), vel(3), omega(3)] = 13
-        self._state = torch.zeros(
-            self.num_envs, 13, device=device, requires_grad=config.requires_grad
-        )
-        self._state[:, 2] = 1.0  # z=1 hover
-        # Initialize quaternion to identity [w=1, x=0, y=0, z=0]
-        self._state[:, 3] = 1.0  # w component
-        self._state[:, 4:7] = 0.0  # x, y, z components
-
-        # Control input (4 motor thrusts)
-        self._last_thrust = torch.zeros(self.num_envs, 4, device=device)
-
-        # Physical constants
-        self.mass = config.mass
-        self.arm_length = config.arm_length
-        self.J = torch.tensor(
-            [config.inertia[0], config.inertia[1], config.inertia[2]],
-            device=device
-        )
-        self.J_inv = torch.tensor(
-            [1.0/config.inertia[0], 1.0/config.inertia[1], 1.0/config.inertia[2]],
-            device=device
-        )
-
-        # Torque constant (simplified - proportional to thrust)
+        # Initialize the Newton ModelBuilder
+        builder = newton.ModelBuilder()
+        builder.rigid_gap = 0.05
+        
+        # We model each environment as a separate independent body in the Newton model
+        for i in range(self.num_envs):
+            body = builder.add_body(
+                mass=config.mass,
+                I_m=wp.mat33(
+                    config.inertia[0], 0.0, 0.0,
+                    0.0, config.inertia[1], 0.0,
+                    0.0, 0.0, config.inertia[2]
+                ),
+                key=f"drone_{i}"
+            )
+        
+        # Finalize model
+        self.model = builder.finalize(requires_grad=config.requires_grad, device=self.wp_device)
+        
+        self.state_curr = self.model.state()
+        self.state_next = self.model.state()
+        
+        # Controls setup
         self.ct = 0.01  # Torque coefficient
+        self.arm_length = config.arm_length
+        self.max_thrust = 20.0
+        
+        # Warp array for the 4-motor controls, allocated directly
+        self._wp_controls = wp.zeros((self.num_envs, 4), dtype=float, device=self.wp_device, requires_grad=config.requires_grad)
 
-        # Control allocation matrix: maps 4 motors to [roll_torque, pitch_torque, yaw_torque, thrust]
-        # Standard quadrotor X configuration
-        self._tau_thrust_matrix = self._build_tau_thrust_matrix()
-
-    def _build_tau_thrust_matrix(self) -> torch.Tensor:
-        """Build control allocation matrix.
+        # We keep a PyTorch representation of the state for external query
+        self._state_tensor = torch.zeros(self.num_envs, 13, device=device, requires_grad=config.requires_grad)
+        self.reset_states()
         
-        Maps motor thrusts to [tau_x, tau_y, tau_z, total_thrust]
-        """
-        d = self.arm_length / (2**0.5)  # arm length / sqrt(2)
-        
-        # X-configuration:
-        # Motor layout (front-right, front-left, rear-left, rear-right)
-        # tau_x:  d*(T1 + T4 - T2 - T3) / sqrt(2)
-        # tau_y:  d*(-T1 - T4 + T2 + T3) / sqrt(2)
-        # tau_z:  (T1 + T3 - T2 - T4) * ct
-        # thrust: T1 + T2 + T3 + T4
-        
-        matrix = torch.zeros(4, 4, device=self.device)
-        matrix[0, 0] = d   # T1
-        matrix[0, 1] = -d  # T2
-        matrix[0, 2] = -d # T3
-        matrix[0, 3] = d   # T4
-        
-        matrix[1, 0] = -d  # T1
-        matrix[1, 1] = d   # T2
-        matrix[1, 2] = d   # T3
-        matrix[1, 3] = -d  # T4
-        
-        matrix[2, 0] = self.ct  # T1 (yaw)
-        matrix[2, 1] = -self.ct # T2
-        matrix[2, 2] = self.ct  # T3
-        matrix[2, 3] = -self.ct # T4
-        
-        matrix[3, :] = 1.0  # All contribute to thrust
-        
-        return matrix
+        # Choose solver
+        self.solver = newton.solvers.SolverSemiImplicit(self.model)
 
     @property
     def state(self) -> torch.Tensor:
-        return self._state
+        """Returns the PyTorch tensor representing state: [pos, quat, vel, omega]."""
+        wp.launch(
+            read_state_kernel,
+            dim=self.num_envs,
+            inputs=(self.state_curr.body_q, self.state_curr.body_qd, wp.from_torch(self._state_tensor)),
+            device=self.wp_device
+        )
+        return self._state_tensor
+
+    def set_state(self, new_state_tensor: torch.Tensor):
+        self._state_tensor = new_state_tensor
+        wp.launch(
+            write_state_kernel,
+            dim=self.num_envs,
+            inputs=(wp.from_torch(self._state_tensor), self.state_curr.body_q, self.state_curr.body_qd),
+            device=self.wp_device
+        )
 
     def reset_states(self, positions: Optional[torch.Tensor] = None, env_ids: Optional[torch.Tensor] = None):
-        """Reset the drone to initial states without in-place modifying graph history."""
+        """Reset the drone to initial states."""
+        # Work on PyTorch side
         if positions is None:
             positions = torch.zeros(self.num_envs, 3, device=self.device)
             positions[:, 2] = 1.0
@@ -127,235 +233,85 @@ class Drone:
         else:
             reset_positions = positions
 
-        new_state = self._state.clone()
+        new_state = self._state_tensor.clone()
         new_state[env_ids, :3] = reset_positions
         # Reset quaternion to identity (w=1, x=y=z=0)
         new_state[env_ids, 3:7] = torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device)
         # Reset velocities
         new_state[env_ids, 7:10] = 0.0
         new_state[env_ids, 10:13] = 0.0
-        self._state = new_state
+        
+        self.set_state(new_state)
 
     def apply_control(self, thrust_normalized: torch.Tensor):
         """Apply control inputs (normalized thrust per motor [0,1])."""
-        # Scale normalized thrust [0,1] to actual thrust
-        max_thrust = 20.0  # Maximum thrust per motor
-        self._last_thrust = thrust_normalized * max_thrust
+        # PyTorch -> Warp
+        scaled_thrust = thrust_normalized * self.max_thrust
+        # Copy to warp
+        wp.copy(self._wp_controls, wp.from_torch(scaled_thrust))
 
     def integrate(self, dt: Optional[float] = None):
-        """Step the simulation forward."""
+        """Step the simulation forward using Newton."""
         dt = dt or self.config.dt
+        sub_dt = dt / self.config.n_substeps
 
-        # Apply substeps for stability
-        substeps = self.config.n_substeps
-        sub_dt = dt / substeps
+        for _ in range(self.config.n_substeps):
+            self.state_curr.clear_forces()
+            
+            # 1. Apply thrust maps
+            wp.launch(
+                compute_quadrotor_wrenches,
+                dim=self.num_envs,
+                inputs=(
+                    self.state_curr.body_q,
+                    self._wp_controls,
+                    self.arm_length,
+                    self.ct,
+                    self.state_curr.body_f,
+                ),
+                device=self.wp_device
+            )
+            
+            # 2. Step Newton physics
+            self.solver.step(
+                self.state_curr,
+                self.state_next,
+                None, # no control struct needed since we mapped forces direct to body_f
+                None,
+                sub_dt,
+            )
+            
+            # 3. Swap buffers
+            self.state_curr, self.state_next = self.state_next, self.state_curr
 
-        for _ in range(substeps):
-            if self.config.solver_type == "rk4":
-                self._rk4_step(sub_dt)
-            else:
-                self._euler_step(sub_dt)
-
-    def _euler_step(self, dt: float):
-        """Euler integration step."""
-        # Unpack state
-        pos = self._state[:, :3]
-        quat = self._state[:, 3:7]  # [w, x, y, z]
-        vel = self._state[:, 7:10]
-        omega = self._state[:, 10:13]
-
-        # Compute control outputs: [num_envs, 4] @ [4, 4].T -> [num_envs, 4]
-        # Each row of _tau_thrust_matrix applies to corresponding motor config
-        # Matrix layout: rows are [roll_torque, pitch_torque, yaw_torque, thrust] contributions
-        thrust_vec = self._last_thrust  # [num_envs, 4]
-        
-        # Build proper control matrix for batched matmul
-        # Each motor contributes to all 4 outputs
-        tau_x = thrust_vec[:, 0] * self._tau_thrust_matrix[0, 0] + thrust_vec[:, 1] * self._tau_thrust_matrix[0, 1] + thrust_vec[:, 2] * self._tau_thrust_matrix[0, 2] + thrust_vec[:, 3] * self._tau_thrust_matrix[0, 3]
-        tau_y = thrust_vec[:, 0] * self._tau_thrust_matrix[1, 0] + thrust_vec[:, 1] * self._tau_thrust_matrix[1, 1] + thrust_vec[:, 2] * self._tau_thrust_matrix[1, 2] + thrust_vec[:, 3] * self._tau_thrust_matrix[1, 3]
-        tau_z = thrust_vec[:, 0] * self._tau_thrust_matrix[2, 0] + thrust_vec[:, 1] * self._tau_thrust_matrix[2, 1] + thrust_vec[:, 2] * self._tau_thrust_matrix[2, 2] + thrust_vec[:, 3] * self._tau_thrust_matrix[2, 3]
-        total_thrust = thrust_vec[:, 0] * self._tau_thrust_matrix[3, 0] + thrust_vec[:, 1] * self._tau_thrust_matrix[3, 1] + thrust_vec[:, 2] * self._tau_thrust_matrix[3, 2] + thrust_vec[:, 3] * self._tau_thrust_matrix[3, 3]
-        
-        tau = torch.stack([tau_x, tau_y, tau_z], dim=1)  # [num_envs, 3]
-        thrust = total_thrust  # [num_envs]
-
-        # Compute acceleration
-        # Thrust direction in world frame (quaternion rotation of z-axis)
-        thrust_dir = self._quat_rotate(quat, torch.tensor([0.0, 0.0, 1.0], device=self.device))
-        thrust_acc = thrust_dir * (thrust / self.mass).unsqueeze(-1)
-        
-        # Gravity
-        gravity_acc = torch.tensor([0.0, 0.0, -GRAVITY], device=self.device)
-        
-        # Total linear acceleration
-        acc = thrust_acc + gravity_acc
-
-        # Angular acceleration (tau = J * alpha)
-        omega_cross_J_omega = torch.cross(omega, (self.J * omega), dim=-1)
-        alpha = self.J_inv * (tau - omega_cross_J_omega)
-
-        # Update state
-        vel_new = vel + acc * dt
-        pos_new = pos + vel_new * dt
-        
-        omega_new = omega + alpha * dt
-        quat_new = self._quat_integrate(quat, omega_new, dt)
-        
-        # Normalize quaternion
-        quat_new = quat_new / torch.norm(quat_new, dim=-1, keepdim=True)
-
-        # Store OUT-OF-PLACE to support backpropagation through time (BPTT)
-        self._state = torch.cat([pos_new, quat_new, vel_new, omega_new], dim=1)
-
-    def _rk4_step(self, dt: float):
-        """Runge-Kutta 4 integration step."""
-        # RK4 for quaternion integration
-        quat = self._state[:, 3:7]
-        omega = self._state[:, 10:13]
-        
-        # Compute k1
-        k1_quat = self._quat_derivative(quat, omega)
-        k1_vel = self._compute_acceleration(quat, self._last_thrust)
-        k1_omega = self._compute_angular_acceleration(quat, omega, self._last_thrust)
-        
-        # k2
-        quat2 = quat + 0.5 * dt * k1_quat
-        quat2 = quat2 / torch.norm(quat2, dim=-1, keepdim=True)
-        omega2 = omega + 0.5 * dt * k1_omega
-        k2_quat = self._quat_derivative(quat2, omega2)
-        k2_vel = self._compute_acceleration(quat2, self._last_thrust)
-        k2_omega = self._compute_angular_acceleration(quat2, omega2, self._last_thrust)
-        
-        # k3
-        quat3 = quat + 0.5 * dt * k2_quat
-        quat3 = quat3 / torch.norm(quat3, dim=-1, keepdim=True)
-        omega3 = omega + 0.5 * dt * k2_omega
-        k3_quat = self._quat_derivative(quat3, omega3)
-        k3_vel = self._compute_acceleration(quat3, self._last_thrust)
-        k3_omega = self._compute_angular_acceleration(quat3, omega3, self._last_thrust)
-        
-        # k4
-        quat4 = quat + dt * k3_quat
-        quat4 = quat4 / torch.norm(quat4, dim=-1, keepdim=True)
-        omega4 = omega + dt * k3_omega
-        k4_quat = self._quat_derivative(quat4, omega4)
-        k4_vel = self._compute_acceleration(quat4, self._last_thrust)
-        k4_omega = self._compute_angular_acceleration(quat4, omega4, self._last_thrust)
-        
-        # Update state
-        pos = self._state[:, :3]
-        vel = self._state[:, 7:10]
-        
-        # Integrate velocity to get position (not from acceleration)
-        avg_vel = (k1_vel + 2*k2_vel + 2*k3_vel + k4_vel) / 6.0
-        new_vel = vel + avg_vel * dt
-        new_pos = pos + new_vel * dt
-        
-        new_quat = quat + (dt / 6.0) * (k1_quat + 2*k2_quat + 2*k3_quat + k4_quat)
-        new_quat = new_quat / torch.norm(new_quat, dim=-1, keepdim=True)
-        
-        new_omega = omega + (dt / 6.0) * (k1_omega + 2*k2_omega + 2*k3_omega + k4_omega)
-        
-        # Store OUT-OF-PLACE to support backpropagation through time (BPTT)
-        self._state = torch.cat([new_pos, new_quat, new_vel, new_omega], dim=1)
-
-    def _quat_derivative(self, quat: torch.Tensor, omega: torch.Tensor) -> torch.Tensor:
-        """Compute quaternion time derivative."""
-        # q_dot = 0.5 * q * omega_quat
-        # omega_quat = [0, omega_x, omega_y, omega_z]
-        w, x, y, z = quat[:, 0], quat[:, 1], quat[:, 2], quat[:, 3]
-        wx, wy, wz = omega[:, 0], omega[:, 1], omega[:, 2]
-        
-        q_dot = torch.zeros_like(quat)
-        q_dot[:, 0] = 0.5 * (-x*wx - y*wy - z*wz)
-        q_dot[:, 1] = 0.5 * (w*wx + y*wz - z*wy)
-        q_dot[:, 2] = 0.5 * (w*wy - x*wz + z*wx)
-        q_dot[:, 3] = 0.5 * (w*wz + x*wy - y*wx)
-        
-        return q_dot
-
-    def _quat_integrate(self, quat: torch.Tensor, omega: torch.Tensor, dt: float) -> torch.Tensor:
-        """Integrate quaternion given angular velocity."""
-        return quat + dt * self._quat_derivative(quat, omega)
-
-    def _quat_rotate(self, quat: torch.Tensor, vec: torch.Tensor) -> torch.Tensor:
-        """Rotate vector by quaternion."""
-        # q * v * q^-1
-        w, x, y, z = quat[:, 0], quat[:, 1], quat[:, 2], quat[:, 3]
-        
-        # Convert vec to quaternion form
-        vx, vy, vz = vec[0], vec[1], vec[2]
-        
-        # Rotation formula
-        tx = (y*vz - z*vy) * 2
-        ty = (z*vx - x*vz) * 2
-        tz = (x*vy - y*vx) * 2
-        
-        result = torch.zeros_like(vec).unsqueeze(0).repeat(quat.shape[0], 1) if vec.dim() == 1 else torch.zeros(quat.shape[0], 3, device=self.device)
-        
-        if vec.dim() == 1:
-            result[:, 0] = vx + w*tx + (y*tz - z*ty)
-            result[:, 1] = vy + w*ty + (z*tx - x*tz)
-            result[:, 2] = vz + w*tz + (x*ty - y*tx)
-        else:
-            # Batch vector
-            tx = (y*vz - z*vy) * 2
-            ty = (z*vx - x*vz) * 2
-            tz = (x*vy - y*vx) * 2
-            result[:, 0] = vx + w*tx + (y*tz - z*ty)
-            result[:, 1] = vy + w*ty + (z*tx - x*tz)
-            result[:, 2] = vz + w*tz + (x*ty - y*tx)
-        
-        return result
-
-    def _compute_acceleration(self, quat: torch.Tensor, thrust: torch.Tensor) -> torch.Tensor:
-        """Compute linear acceleration."""
-        # Total thrust
-        total_thrust = thrust.sum(dim=-1)
-        
-        # Thrust direction (world z-axis rotated by quaternion)
-        thrust_dir = self._quat_rotate(quat, torch.tensor([0.0, 0.0, 1.0], device=self.device))
-        
-        # Thrust acceleration
-        thrust_acc = thrust_dir * (total_thrust / self.mass).unsqueeze(-1)
-        
-        # Gravity
-        gravity = torch.tensor([0.0, 0.0, -GRAVITY], device=self.device)
-        
-        return thrust_acc + gravity
-
-    def _compute_angular_acceleration(self, quat: torch.Tensor, omega: torch.Tensor, thrust: torch.Tensor) -> torch.Tensor:
-        """Compute angular acceleration."""
-        # Compute torques from control allocation
-        controls = self._tau_thrust_matrix @ thrust.T  # [4, num_envs]
-        tau = controls[:3].T  # [num_envs, 3]
-        
-        # Coriolis effect: omega_cross_J_omega
-        J_omega = self.J * omega
-        omega_cross_J_omega = torch.cross(omega, J_omega, dim=-1)
-        
-        # Angular acceleration: J_inv * (tau - omega x J*omega)
-        alpha = self.J_inv * (tau - omega_cross_J_omega)
-        
-        return alpha
+        # Read back Newton state to pyTorch
+        new_state_tensor = torch.zeros_like(self._state_tensor)
+        wp.launch(
+            read_state_kernel,
+            dim=self.num_envs,
+            inputs=(self.state_curr.body_q, self.state_curr.body_qd, wp.from_torch(new_state_tensor)),
+            device=self.wp_device
+        )
+        self._state_tensor = new_state_tensor
 
     def get_state(self) -> dict[str, torch.Tensor]:
         """Get the current state as dict of tensors."""
+        st = self.state
         return {
-            "position": self._state[:, :3].clone(),
-            "orientation": self._state[:, 3:7].clone(),
-            "velocity": self._state[:, 7:10].clone(),
-            "omega": self._state[:, 10:13].clone(),
+            "position": st[:, :3],
+            "orientation": st[:, 3:7],
+            "velocity": st[:, 7:10],
+            "omega": st[:, 10:13],
         }
 
     def get_flat_state(self) -> torch.Tensor:
         """Get the current state as flat tensor [num_envs, 13]."""
-        return self._state.clone()
+        return self.state
 
     def detach_graph(self):
         """Detach runtime tensors between rollout iterations."""
-        self._state = self._state.detach()
-        self._last_thrust = self._last_thrust.detach()
+        self._state_tensor = self._state_tensor.detach()
+        self.set_state(self._state_tensor)
 
 
 def create_drone(
