@@ -370,13 +370,25 @@ class SHAC:
         self.cfg = cfg or TrainingCfg()
 
         # Get obs/action dimensions
-        obs_shape = env.observation_space.shape
-        action_shape = env.action_space.shape
+        if hasattr(env, "single_observation_space"):
+            obs_space = env.single_observation_space
+        else:
+            obs_space = env.observation_space
+            
+        if hasattr(obs_space, "spaces") and "policy" in obs_space.spaces:
+            obs_dim = obs_space.spaces["policy"].shape[0]
+        else:
+            obs_dim = obs_space.shape[0]
+
+        if hasattr(env, "single_action_space"):
+            action_dim = env.single_action_space.shape[0]
+        else:
+            action_dim = env.action_space.shape[0]
 
         # Create agent
         self.agent = SHACAgent(
-            obs_dim=obs_shape[0],
-            action_dim=action_shape[0],
+            obs_dim=obs_dim,
+            action_dim=action_dim,
             cfg=self.cfg,
         )
 
@@ -384,8 +396,8 @@ class SHAC:
         self.buffer = RolloutBuffer(
             num_envs=env.num_envs,
             horizon=self.cfg.rollout_horizon,
-            obs_dim=obs_shape[0],
-            action_dim=action_shape[0],
+            obs_dim=obs_dim,
+            action_dim=action_dim,
             device=self.cfg.device,
         )
 
