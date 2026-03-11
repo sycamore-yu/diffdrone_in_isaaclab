@@ -44,3 +44,4 @@ runs/
 
 # Jupyter
 .ipynb_checkpoints/
+.wt/
