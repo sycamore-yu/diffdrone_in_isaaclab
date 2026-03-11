@@ -103,7 +103,9 @@ class TestObstacleEnvironment:
         env.reset()
 
         # Put drone at obstacle position (should trigger collision)
-        env.drone._state[:, :3] = 0.0  # At origin where obstacle is
+        state = env.drone.get_flat_state()
+        state[:, :3] = 0.0  # At origin where obstacle is
+        env.drone.set_state(state)
 
         action = torch.zeros(num_envs, 4)
         obs, (loss, reward), terminated, truncated, extras = env.step(action)
@@ -123,7 +125,9 @@ class TestObstacleEnvironment:
         env.reset()
 
         # Put drone very close to obstacle (at origin)
-        env.drone._state[:, :3] = 0.0
+        state = env.drone.get_flat_state()
+        state[:, :3] = 0.0
+        env.drone.set_state(state)
 
         action = torch.zeros(num_envs, 4)
         obs, (loss, reward), terminated, truncated, extras = env.step(action)
@@ -309,7 +313,9 @@ class TestIntegration:
 
         obs, _ = env.reset()
         env.episode_length_buf[0] = env.episode_length_max
-        env.drone._state[1, 2] = 0.0
+        state = env.drone.get_flat_state()
+        state[1, 2] = 0.0
+        env.drone.set_state(state)
         trainer._collect_rollout(obs)
 
         assert trainer.buffer.resets[0, 0].item() == 1.0

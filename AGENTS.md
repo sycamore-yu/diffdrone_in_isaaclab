@@ -147,5 +147,22 @@ For more details, see README.md and docs/QUICKSTART.md.
 - NEVER stop before pushing - that leaves work stranded locally
 - NEVER say "ready to push when you are" - YOU must push
 - If push fails, resolve and retry until it succeeds
+- Test in isaaclab-newton conda环境直到没有报错
 
 <!-- END BEADS INTEGRATION -->
+
+## Progress Sync File
+
+Use [docs/progress.md](/home/tong/tongworkspace/diffdroneinisaac_workspace/docs/progress.md) as the shared cross-session implementation status file for `diffaero_newton`.
+
+Rules for all AI agents:
+
+- Read `docs/development.md` for target architecture, interface expectations, and engineering standards.
+- Read `docs/progress.md` before starting substantial work to understand the current actual migration status.
+- Treat `docs/progress.md` as the ground truth for what is already implemented, validated, and still missing.
+- If `docs/development.md` and `docs/progress.md` differ:
+  - use `docs/development.md` for the desired architecture and coding direction
+  - use `docs/progress.md` for current scope, completion status, and validated capability coverage
+- Update `docs/progress.md` whenever implementation status, validation confidence, migration scope, or major remaining gaps materially change.
+- Keep `docs/progress.md` focused on implementation state and decisions.
+- Do not use `docs/progress.md` as a task tracker replacement for `bd`; use `bd` for task management and issue tracking.
