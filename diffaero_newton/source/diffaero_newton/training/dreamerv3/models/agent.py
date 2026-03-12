@@ -207,7 +207,7 @@ class ActorCriticAgent(nn.Module):
 
     def sample_as_env_action(self, latent: torch.Tensor, greedy: bool = False):
         """Sample action as numpy array for environment."""
-        action = self.sample(latent, greedy)
+        action, _ = self.sample(latent, greedy)
         return action.to(torch.float32).detach().cpu().squeeze(0).numpy()
 
     def update(

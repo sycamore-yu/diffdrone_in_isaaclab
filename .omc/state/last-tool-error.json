@@ -1,7 +1,7 @@
 {
   "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"git push\"}",
-  "error": "Exit code 128\nfatal: The current branch claude/bootstrap has no upstream branch.\nTo push the current branch and set the remote as upstream, use\n\n    git push --set-upstream origin claude/bootstrap\n\n\nfatal: The current branch claude/bootstrap has no upstream branch.\nTo push the current branch and set the remote as upstream, use\n\n    git push --set-upstream origin claude/bootstrap",
-  "timestamp": "2026-03-12T04:05:37.459Z",
-  "retry_count": 5
+  "tool_input_preview": "{\"command\":\"source ~/miniconda3/etc/profile.d/conda.sh && conda activate isaaclab-newton && export CUDA_VISIBLE_DEVICES='' && python -c \\\"\\nimport sys\\nsys.path.insert(0, 'diffaero_newton/source')\\n# ...",
+  "error": "Exit code 1\nUnable to bootstrap inner kit kernel: /home/tong/miniconda3/envs/isaaclab-newton/lib/python3.11/site-packages/isaacsim/kit/libcarb.so: cannot allocate memory in static TLS block\n\nUnable to bootstrap inner kit kernel: /home/tong/miniconda3/envs/isaaclab-newton/lib/python3.11/site-packages/isaacsim/kit/libcarb.so: cannot allocate memory in static TLS block",
+  "timestamp": "2026-03-12T08:07:59.908Z",
+  "retry_count": 1
 }

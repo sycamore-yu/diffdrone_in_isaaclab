@@ -89,9 +89,18 @@ def train_worldmodel(
     """Train world model on replay buffer samples."""
     use_amp = training_cfg.get("use_amp", False)
     dtype = torch.float16 if use_amp else torch.float32
+    update_freq = training_cfg.get("worldmodel_update_freq", 1)
+
+    # Initialize accumulators for logging
+    total_loss_sum = None
+    rep_loss_sum = None
+    dyn_loss_sum = None
+    rec_loss_sum = None
+    rew_loss_sum = None
+    end_loss_sum = None
 
     with torch.autocast(device_type="cuda", dtype=dtype, enabled=use_amp):
-        for _ in range(training_cfg.get("worldmodel_update_freq", 1)):
+        for _ in range(update_freq):
             sample_state, sample_action, sample_reward, sample_termination, sample_perception = (
                 replaybuffer.sample(training_cfg.batch_size, training_cfg.batch_length)
             )
@@ -103,8 +112,31 @@ def train_worldmodel(
                 sample_termination,
             )
 
+            # Accumulate losses for logging
+            if total_loss_sum is None:
+                total_loss_sum = total_loss.detach()
+                rep_loss_sum = rep_loss.detach()
+                dyn_loss_sum = dyn_loss.detach()
+                rec_loss_sum = rec_loss.detach()
+                rew_loss_sum = rew_loss.detach()
+                end_loss_sum = end_loss.detach()
+            else:
+                total_loss_sum = total_loss_sum + total_loss.detach()
+                rep_loss_sum = rep_loss_sum + rep_loss.detach()
+                dyn_loss_sum = dyn_loss_sum + dyn_loss.detach()
+                rec_loss_sum = rec_loss_sum + rec_loss.detach()
+                rew_loss_sum = rew_loss_sum + rew_loss.detach()
+                end_loss_sum = end_loss_sum + end_loss.detach()
+
+            # Scale and backward each iteration
+            if scaler is not None:
+                scaler.scale(total_loss).backward()
+            else:
+                total_loss.backward()
+
+    # Compute gradients after accumulation
     if scaler is not None:
-        scaler.scale(total_loss).backward()
+        scaler.unscale_(opt)
         grad_norm = torch.nn.utils.clip_grad_norm_(
             world_model.parameters(), training_cfg.get("max_grad_norm", 100.0)
         )
@@ -112,21 +144,22 @@ def train_worldmodel(
         scaler.update()
         opt.zero_grad(set_to_none=True)
     else:
-        total_loss.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(
             world_model.parameters(), training_cfg.get("max_grad_norm", 100.0)
         )
         opt.step()
         opt.zero_grad(set_to_none=True)
 
+    # Average losses for logging
+    num_updates = max(1, update_freq)
     world_info = {
-        "WorldModel/state_total_loss": total_loss.item(),
-        "WorldModel/state_rep_loss": rep_loss.item(),
-        "WorldModel/state_dyn_loss": dyn_loss.item(),
-        "WorldModel/state_rec_loss": rec_loss.item(),
+        "WorldModel/state_total_loss": (total_loss_sum / num_updates).item(),
+        "WorldModel/state_rep_loss": (rep_loss_sum / num_updates).item(),
+        "WorldModel/state_dyn_loss": (dyn_loss_sum / num_updates).item(),
+        "WorldModel/state_rec_loss": (rec_loss_sum / num_updates).item(),
         "WorldModel/grad_norm": grad_norm.item(),
-        "WorldModel/state_rew_loss": rew_loss.item(),
-        "WorldModel/state_end_loss": end_loss.item(),
+        "WorldModel/state_rew_loss": (rew_loss_sum / num_updates).item(),
+        "WorldModel/state_end_loss": (end_loss_sum / num_updates).item(),
     }
 
     return world_info
@@ -183,7 +216,8 @@ class World_Agent:
 
         # Setup scaler for AMP
         use_amp = self.training_hyper.get("use_amp", False)
-        self.scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
+        device_str = str(device) if hasattr(device, 'index') else str(device)
+        self.scaler = torch.amp.GradScaler(device_str, enabled=use_amp)
 
         # Load checkpoint if specified
         if self.cfg.get("checkpoint_path") is not None:
