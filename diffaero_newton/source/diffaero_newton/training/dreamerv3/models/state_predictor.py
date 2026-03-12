@@ -324,7 +324,7 @@ class DepthStateModel(nn.Module):
         assert latent.ndim == act.ndim == 2
         state_act = self.act_state_proj(torch.cat([latent, act], dim=-1))
         if hidden is None:
-            hidden = torch.zeros(state_act.shape[0], self.cfg.hidden_dim).to(state_act.device)
+            hidden = torch.zeros(state_act.shape[0], self.cfg.hidden_dim, device=state_act.device)
         hidden = self.seq_model(state_act, hidden)
         prior_logits = self.prior_proj(hidden)
         prior_logits = prior_logits.view(*prior_logits.shape[:-1], self.categoricals, -1)

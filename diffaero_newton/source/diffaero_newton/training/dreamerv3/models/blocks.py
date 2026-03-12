@@ -310,7 +310,7 @@ class SymLogTwoHotLoss(nn.Module):
         self.lower_bound = lower_bound
         self.upper_bound = upper_bound
         self.bin_length = (upper_bound - lower_bound) / (num_classes - 1)
-        self.register_buffer("bins", torch.linspace(-20, 20, num_classes), persistent=False)
+        self.register_buffer("bins", torch.linspace(-20, 20, num_classes))
 
     def forward(self, output, target):
         target = symlog(target)

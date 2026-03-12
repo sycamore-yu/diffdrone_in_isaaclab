@@ -1,7 +1,6 @@
 """World_Agent - DreamerV3 world-model training for IsaacLab environments."""
 
 import os
-from copy import deepcopy
 from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
@@ -368,8 +367,8 @@ class World_Agent:
 
     def load(self, path: str):
         """Load model checkpoints."""
-        self.state_model.load_state_dict(torch.load(os.path.join(path, "statemodel.pth")))
-        self.agent.load_state_dict(torch.load(os.path.join(path, "agent.pth")))
+        self.state_model.load_state_dict(torch.load(os.path.join(path, "statemodel.pth"), weights_only=True))
+        self.agent.load_state_dict(torch.load(os.path.join(path, "agent.pth"), weights_only=True))
 
     @staticmethod
     def build(cfg, env, device):

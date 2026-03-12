@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"git push\"}",
+  "error": "Exit code 128\nfatal: The current branch claude/bootstrap has no upstream branch.\nTo push the current branch and set the remote as upstream, use\n\n    git push --set-upstream origin claude/bootstrap\n\n\nfatal: The current branch claude/bootstrap has no upstream branch.\nTo push the current branch and set the remote as upstream, use\n\n    git push --set-upstream origin claude/bootstrap",
+  "timestamp": "2026-03-12T04:05:37.459Z",
+  "retry_count": 5
+}
