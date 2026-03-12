@@ -11,8 +11,8 @@ This document serves as the ground truth for the current actual migration status
 ### Algorithms
 - [x] **SHAC**: Implemented (short-horizon actor-critic with Newton differentiable physics)
 - [x] **APG / APG_sto**: Implemented (deterministic APG + stochastic APG with entropy regularisation)
-- [ ] **PPO / Asymmetric PPO**: Pending
-- [ ] **DreamerV3**: Pending
+- [x] **PPO / Asymmetric PPO**: Implemented (clipped surrogate with GAE, privilege state critic)
+- [ ] **DreamerV3**: Deferred (world-model stack, separate session)
 
 ### Dynamics
 - [x] **PointMass**: Implemented (Newton backend, fully compatible with continuous forward/backward propagation)
@@ -22,7 +22,7 @@ This document serves as the ground truth for the current actual migration status
 - [x] **Position Control**: Implemented (Single-agent target position tracking)
 - [x] **Multi-Agent Position Control**: Implemented (Multi-agent with collision rewards and proper shape flattening)
 - [x] **Obstacle Avoidance**: Implemented (ObstacleAvoidanceEnv with multi-modal sensor integration)
-- [ ] **Racing**: Pending
+- [x] **Racing**: Implemented (figure-8 gate track with gate passing detection)
 
 ### Sensors
 - [x] **Relative Position (relpos)**: Implemented (sorted nearest-obstacle relative positions)
@@ -39,3 +39,5 @@ Currently working validation scripts:
 - `python test_mapc_env.py` (Multi-Agent Position Control test)
 - `python test_sensors.py` (Camera/LiDAR/RelPos sensor gradient flow test)
 - `python test_apg_training.py` (APG + APGStochastic training loop test)
+- `python test_ppo_training.py` (PPO + AsymmetricPPO training loop test)
+- `python scripts/train.py --algo apg --max_iter 3` (Unified training entry smoke test)
