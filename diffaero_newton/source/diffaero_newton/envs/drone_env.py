@@ -12,7 +12,7 @@ import numpy as np
 
 from isaaclab.envs import DirectRLEnv
 from diffaero_newton.configs.drone_env_cfg import DroneEnvCfg
-from diffaero_newton.dynamics.drone_dynamics import Drone, DroneConfig
+from diffaero_newton.dynamics.registry import create_dynamics
 from diffaero_newton.tasks.obstacle_manager import ObstacleManager
 from diffaero_newton.tasks.reward_terms import compute_risk_loss
 from diffaero_newton.configs.obstacle_task_cfg import ObstacleTaskCfg
@@ -32,13 +32,10 @@ class DroneEnv(DirectRLEnv):
         # actually super() will setup omni.sim so we can just let it run.
         super().__init__(cfg, render_mode, **kwargs)
 
-        # Initialize drone dynamics (Newton)
-        drone_cfg = DroneConfig(
-            num_envs=self.num_envs,
-            dt=self.physics_dt,
-            requires_grad=False,
-        )
-        self.drone = Drone(drone_cfg, device=self.device)
+        # Initialize dynamics
+        self.cfg.dynamics.num_envs = self.num_envs
+        self.cfg.dynamics.dt = self.physics_dt
+        self.drone = create_dynamics(self.cfg.dynamics, device=self.device)
         self.drone.reset_states()
 
         # Goal (random target position)
