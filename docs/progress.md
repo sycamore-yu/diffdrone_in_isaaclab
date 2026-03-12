@@ -9,8 +9,8 @@ This document serves as the ground truth for the current actual migration status
 ## Capability Matrix Status Tracker
 
 ### Algorithms
-- [ ] **SHAC**: Pending
-- [ ] **APG / APG_sto**: Pending
+- [x] **SHAC**: Implemented (short-horizon actor-critic with Newton differentiable physics)
+- [x] **APG / APG_sto**: Implemented (deterministic APG + stochastic APG with entropy regularisation)
 - [ ] **PPO / Asymmetric PPO**: Pending
 - [ ] **DreamerV3**: Pending
 
@@ -21,13 +21,13 @@ This document serves as the ground truth for the current actual migration status
 ### Tasks/Environments
 - [x] **Position Control**: Implemented (Single-agent target position tracking)
 - [x] **Multi-Agent Position Control**: Implemented (Multi-agent with collision rewards and proper shape flattening)
-- [ ] **Obstacle Avoidance**: Pending
+- [x] **Obstacle Avoidance**: Implemented (ObstacleAvoidanceEnv with multi-modal sensor integration)
 - [ ] **Racing**: Pending
 
 ### Sensors
-- [ ] **Relative Position (relpos)**: Pending
-- [ ] **Camera**: Pending
-- [ ] **Lidar**: Pending
+- [x] **Relative Position (relpos)**: Implemented (sorted nearest-obstacle relative positions)
+- [x] **Camera**: Implemented (depth-map ray-casting, configurable FOV & resolution)
+- [x] **Lidar**: Implemented (360° ray-casting with vertical/horizontal coverage)
 
 ## Validation & Commands
 Currently working validation scripts:
@@ -37,3 +37,5 @@ Currently working validation scripts:
 - `python test_pointmass_env.py` (PointMass environment propagation test)
 - `python test_position_control.py` (Single-agent Position Control test)
 - `python test_mapc_env.py` (Multi-Agent Position Control test)
+- `python test_sensors.py` (Camera/LiDAR/RelPos sensor gradient flow test)
+- `python test_apg_training.py` (APG + APGStochastic training loop test)
