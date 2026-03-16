@@ -271,6 +271,46 @@ Examples:
 - Combining detached RL rewards and differentiable losses into a single unnamed scalar
 - Spreading Newton solver ownership across multiple modules
 
+## Capability Matrix & Migration Baseline
+
+This section defines the migration baseline from DiffAero to IsaacLab+Newton across four dimensions: Algorithms, Dynamics, Tasks/Environments, and Sensors.
+
+### 1. Algorithms (Training Layer)
+| Source (DiffAero) | Target Module | Description & Interface Constraint | Definition of Done & Acceptance |
+|---|---|---|---|
+| `algo/SHAC.py` | `training/shac` | Short-Horizon Actor-Critic. Needs differentiable `loss_terms` and explicit horizon unrolling. | Able to train on short horizons with Newton. |
+| `algo/APG.py` / `APG_sto` | `training/apg` | Analytic Policy Gradient. Needs fully differentiable trajectory. | APG loops run without graph breaks. |
+| `algo/PPO.py` / `Asymmetric PPO`| `training/ppo` | Standard RL. Needs detached `reward` and explicit `state` for asymmetric critic. | PPO trains policy using standardized RL outputs. |
+| `algo/dreamerv3` | `training/dreamerv3`| MBRL baseline. Depends on env observation spaces. | (Optional) Environment provides compatible pixel/state observations. |
+
+### 2. Dynamics (Dynamics Layer)
+| Source (DiffAero) | Target Module | Description & Interface Constraint | Definition of Done & Acceptance |
+|---|---|---|---|
+| `dynamics/pointmass.py` | `dynamics/pointmass.py` | PointMass dynamics. Needs unified `base_dynamics` API. | Verified differentiable rollout with Newton. |
+| `dynamics/quadrotor.py` | `dynamics/quadrotor.py` | Quadrotor dynamics. Needs full Newton rigid body integration. | Verified differentiable rollout with control application. |
+
+### 3. Tasks/Environments (Environment Layer)
+| Source (DiffAero) | Target Module | Description & Interface Constraint | Definition of Done & Acceptance |
+|---|---|---|---|
+| `env/position_control.py` | `envs/position_control` | Basic setpoint tracking. | Reaches target; reward/loss align with DiffAero. |
+| `env/position_control_multi_agent.py` | `envs/multi_agent` | Multi-agent setpoint tracking. | Supports `num_envs` > 1 with multiple agents. |
+| `env/obstacle_avoidance.py` | `envs/obstacle_avoidance` | Obstacle avoidance task. Needs `InteractiveSceneCfg` with obstacles. | Nearest-distance queries work; OA loss computes correctly. |
+| `env/racing.py` | `envs/racing` | Trajectory/waypoint tracking. | Waypoint generation and tracking verified. |
+
+### 4. Sensors (Task Layer)
+| Source (DiffAero) | Target Module | Description & Interface Constraint | Definition of Done & Acceptance |
+|---|---|---|---|
+| `relpos` | `tasks/sensors` | Relative position to nearest obstacles. | Returns accurate `(N, 3)` distance vectors. |
+| `camera` | `tasks/sensors` | Depth camera using IsaacLab replicator or warp raycast. | Returns accurate depth maps `(H, W)`. |
+| `lidar` | `tasks/sensors` | 1D/2D Lidar ranges. | Returns accurate range arrays. |
+
+### Minimum Runnable Examples & Verification
+For each dimension, the following test patterns must be implemented and executable under the `isaaclab-newton` conda environment:
+- **Algorithms**: `pytest tests/test_training_loops.py` - Verifies that each algo can step without crashing and properly consumes obs/state/rewards/losses.
+- **Dynamics**: `pytest tests/test_dynamics.py` - Verifies Newtonian integration and gradient flow (e.g. `loss.backward()` works).
+- **Environments/Tasks**: `python script/train.py task=<task_name> algo=<algo_name>` - Verifies that specific task+algo combinations parse configs and begin standard rollout in `isaaclab-newton`. 
+- **Sensors**: `pytest tests/test_sensors.py` - Verifies shape and basic correctness of sensor generation within `InteractiveSceneCfg`.
+
 ## Implementation Order
 
 Implement in this order:
