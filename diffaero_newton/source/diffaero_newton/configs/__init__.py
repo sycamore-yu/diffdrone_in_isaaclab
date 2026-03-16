@@ -1,5 +1,16 @@
-"""Configuration classes for DiffAero Newton."""
+"""Configuration package for diffaero_newton.
 
-from diffaero_newton.configs.drone_env_cfg import DroneEnvCfg
-from diffaero_newton.configs.obstacle_task_cfg import ObstacleTaskCfg
-from diffaero_newton.configs.training_cfg import TrainingCfg
+Avoid eager imports here so lightweight CLI paths such as `train.py --list`
+do not pull in IsaacLab modules during package initialization.
+"""
+
+__all__ = [
+    "drone_env_cfg",
+    "dynamics_cfg",
+    "mapc_env_cfg",
+    "obstacle_task_cfg",
+    "position_control_env_cfg",
+    "racing_env_cfg",
+    "sensor_cfg",
+    "training_cfg",
+]
