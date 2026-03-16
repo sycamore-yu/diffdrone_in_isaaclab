@@ -11,7 +11,7 @@ from diffaero_newton.common.constants import ACTION_DIM
 from diffaero_newton.common.isaaclab_compat import DirectRLEnv
 from diffaero_newton.configs.drone_env_cfg import DroneEnvCfg
 from diffaero_newton.configs.obstacle_task_cfg import ObstacleTaskCfg
-from diffaero_newton.dynamics.drone_dynamics import Drone, DroneConfig
+from diffaero_newton.dynamics.registry import create_dynamics
 from diffaero_newton.tasks.obstacle_manager import ObstacleManager
 from diffaero_newton.tasks.reward_terms import compute_risk_loss
 
@@ -24,12 +24,11 @@ class DroneEnv(DirectRLEnv):
     def __init__(self, cfg: DroneEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
 
-        drone_cfg = DroneConfig(
-            num_envs=self.num_envs,
-            dt=self.physics_dt,
-            requires_grad=cfg.differentiable_dynamics,
-        )
-        self.drone = Drone(drone_cfg, device=self.device)
+        self.cfg.dynamics.num_envs = self.num_envs
+        self.cfg.dynamics.dt = self.physics_dt
+        self.cfg.dynamics.requires_grad = self.cfg.differentiable_dynamics
+        self.drone = create_dynamics(self.cfg.dynamics, device=self.device)
+        self.drone.reset_states()
         self.actions = torch.zeros(self.num_envs, ACTION_DIM, device=self.device)
         self.prev_actions = torch.zeros_like(self.actions)
         self.goal_position = torch.zeros(self.num_envs, 3, device=self.device)
@@ -47,6 +46,7 @@ class DroneEnv(DirectRLEnv):
 
     def _setup_scene(self):
         """No-op scene hook kept for IsaacLab compatibility."""
+        pass
 
     def reset(
         self,
@@ -173,7 +173,7 @@ class DroneEnv(DirectRLEnv):
     def step(
         self,
         action: torch.Tensor,
-    ) -> Tuple[Dict[str, torch.Tensor], Tuple[torch.Tensor, torch.Tensor], torch.Tensor, torch.Tensor, Dict[str, Any]]:
+    ) -> Tuple[Dict[str, torch.Tensor], torch.Tensor, torch.Tensor, torch.Tensor, Dict[str, Any]]:
         self._pre_physics_step(action)
         for _ in range(self.decimation):
             self._apply_action()
@@ -187,6 +187,7 @@ class DroneEnv(DirectRLEnv):
         reset_mask = terminated | truncated
 
         returned_obs = obs_before_reset
+        state_before_reset = self.drone.get_flat_state()
         if reset_mask.any():
             self._reset_idx(reset_mask.nonzero(as_tuple=False).squeeze(-1).tolist())
             returned_obs = self._get_observations()
@@ -205,9 +206,10 @@ class DroneEnv(DirectRLEnv):
             "terminated": terminated,
             "truncated": truncated,
             "next_obs_before_reset": obs_before_reset["policy"].clone(),
+            "next_state_before_reset": state_before_reset.clone(),
         }
 
-        return returned_obs, (loss, reward), terminated, truncated, extras
+        return returned_obs, self.drone.get_flat_state(), loss, reward, extras
 
     def detach_graph(self):
         self.prev_actions = self.prev_actions.detach()

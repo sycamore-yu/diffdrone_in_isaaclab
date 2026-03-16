@@ -56,7 +56,7 @@ class TestObstacleEnvironment:
         assert obs["policy"].shape == (num_envs, 21)  # state + goal + prev_action + nearest_obs_dist
 
     def test_step_returns_all_outputs(self, device, num_envs):
-        """Test that step returns obs, reward, terminated, truncated, extras."""
+        """Test that step keeps the shared 5-tuple training contract."""
         from diffaero_newton.envs.drone_env import DroneEnv
         from diffaero_newton.configs.drone_env_cfg import DroneEnvCfg
 
@@ -65,12 +65,15 @@ class TestObstacleEnvironment:
         env.reset()
 
         action = torch.zeros(num_envs, 4)
-        obs, (loss, reward), terminated, truncated, extras = env.step(action)
+        obs, state, loss, reward, extras = env.step(action)
 
         assert obs["policy"].shape == (num_envs, 21)
+        assert state.shape == (num_envs, 13)
+        assert loss.shape == (num_envs,)
         assert reward.shape == (num_envs,)
-        assert terminated.shape == (num_envs,)
-        assert truncated.shape == (num_envs,)
+        assert extras["terminated"].shape == (num_envs,)
+        assert extras["truncated"].shape == (num_envs,)
+        assert extras["next_obs_before_reset"].shape == (num_envs, 21)
 
     def test_goal_tracking_reward(self, device, num_envs):
         """Test that reward increases when moving toward goal."""
@@ -83,11 +86,11 @@ class TestObstacleEnvironment:
 
         # Zero action - drone should stay roughly in place
         action = torch.zeros(num_envs, 4)
-        _, (loss1, reward1), _, _, _ = env.step(action)
+        _, _, loss1, reward1, _ = env.step(action)
 
         # Small thrust - slight movement
         action = torch.ones(num_envs, 4) * 0.3
-        _, (loss2, reward2), _, _, _ = env.step(action)
+        _, _, loss2, reward2, _ = env.step(action)
 
         # Rewards should be computed (not NaN)
         assert not torch.isnan(reward1).any()
@@ -108,7 +111,7 @@ class TestObstacleEnvironment:
         env.drone.set_state(state)
 
         action = torch.zeros(num_envs, 4)
-        obs, (loss, reward), terminated, truncated, extras = env.step(action)
+        obs, state, loss, reward, extras = env.step(action)
 
         # Should have collision in extras
         assert "obstacles" in extras
@@ -130,10 +133,23 @@ class TestObstacleEnvironment:
         env.drone.set_state(state)
 
         action = torch.zeros(num_envs, 4)
-        obs, (loss, reward), terminated, truncated, extras = env.step(action)
+        obs, state, loss, reward, extras = env.step(action)
 
         # Reward should be computed (not NaN)
         assert not torch.isnan(reward).any()
+ 
+    def test_pointmass_backend_is_respected(self, device, num_envs):
+        """Test that DroneEnv uses the configured dynamics backend."""
+        from diffaero_newton.configs.drone_env_cfg import DroneEnvCfg
+        from diffaero_newton.configs.dynamics_cfg import PointMassCfg
+        from diffaero_newton.dynamics.pointmass_dynamics import PointMass
+        from diffaero_newton.envs.drone_env import DroneEnv
+
+        cfg = DroneEnvCfg(num_envs=num_envs)
+        cfg.dynamics = PointMassCfg(num_envs=num_envs, requires_grad=True)
+        env = DroneEnv(cfg=cfg, device=str(device))
+
+        assert isinstance(env.drone, PointMass)
 
 
 class TestObstacleManager:
@@ -286,7 +302,7 @@ class TestIntegration:
         env.reset()
 
         action = torch.full((num_envs, 4), 0.5, requires_grad=True)
-        _, (loss, _reward), _, _, _ = env.step(action)
+        _, _state, loss, _reward, _extras = env.step(action)
 
         assert loss.requires_grad
         loss.sum().backward()

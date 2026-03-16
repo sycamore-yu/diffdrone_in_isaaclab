@@ -17,6 +17,7 @@ from diffaero_newton.common.isaaclab_compat import (
     SimulationCfg,
     configclass,
 )
+from diffaero_newton.configs.dynamics_cfg import QuadrotorCfg
 
 import numpy as np
 import torch
@@ -70,6 +71,7 @@ class DroneEnvCfg(DirectRLEnvCfg):
     reward_weights: object = field(default_factory=lambda: RewardWeights())
     viewer: object = field(default_factory=lambda: ViewerCfg())
     events: object = field(default_factory=lambda: None)
+    dynamics: object = field(default_factory=QuadrotorCfg)
 
 
 

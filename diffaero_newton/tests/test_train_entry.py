@@ -35,3 +35,11 @@ def test_train_list_runs_without_pythonpath_hack():
     assert result.returncode == 0, result.stderr
     assert "Algorithms:" in result.stdout
     assert "position_control" in result.stdout
+
+
+def test_isaaclab_compat_exports_launch_app():
+    sys.path.insert(0, str(REPO_ROOT / "diffaero_newton/source"))
+
+    from diffaero_newton.common.isaaclab_compat import launch_app
+
+    assert callable(launch_app)

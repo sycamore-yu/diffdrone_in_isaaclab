@@ -3,15 +3,27 @@
 This module prefers the real IsaacLab classes when they can be imported safely.
 If IsaacLab bootstrapping fails (for example due to IsaacSim TLS/runtime issues),
 it falls back to lightweight stand-ins that implement only the contracts used by
-``diffaero_newton``.
+``diffaero_newton``. It also preserves the public ``launch_app`` helper used by
+the unified training entrypoint.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 import torch
+
+__all__ = [
+    "DirectRLEnv",
+    "DirectRLEnvCfg",
+    "InteractiveSceneCfg",
+    "SimulationCfg",
+    "NewtonCfg",
+    "FeatherstoneSolverCfg",
+    "configclass",
+    "launch_app",
+]
 
 try:
     from isaaclab.envs import DirectRLEnv, DirectRLEnvCfg
@@ -90,3 +102,26 @@ except BaseException:
             env_ids_tensor = torch.as_tensor(env_ids, dtype=torch.long, device=self.device)
             if env_ids_tensor.numel() > 0:
                 self.episode_length_buf[env_ids_tensor] = 0
+
+
+class _NullApp:
+    """Headless app stub used when IsaacLab's AppLauncher is unavailable."""
+
+    def close(self):
+        """Mirror the real app handle API."""
+
+
+def launch_app():
+    """Bootstrap IsaacLab's AppLauncher when available.
+
+    The training entrypoint imports this helper unconditionally, so keep the
+    symbol exported even when tests run without the full IsaacLab stack.
+    """
+
+    try:
+        from isaaclab.app import AppLauncher
+    except BaseException:
+        return _NullApp()
+
+    app_launcher = AppLauncher(headless=True)
+    return app_launcher.app
