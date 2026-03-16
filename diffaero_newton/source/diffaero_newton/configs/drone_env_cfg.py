@@ -25,6 +25,7 @@ from isaaclab.sim._impl.newton_manager_cfg import NewtonCfg
 from isaaclab.sim._impl.solvers_cfg import FeatherstoneSolverCfg
 from isaaclab.utils import configclass
 
+from diffaero_newton.configs.dynamics_cfg import QuadrotorCfg
 import numpy as np
 from gymnasium.spaces import Box
 
@@ -70,8 +71,7 @@ class DroneEnvCfg(DirectRLEnvCfg):
     reward_weights: object = field(default_factory=lambda: RewardWeights())
     viewer: object = field(default_factory=lambda: ViewerCfg())
     events: object = field(default_factory=lambda: None)
-
-
+    dynamics: object = field(default_factory=lambda: QuadrotorCfg())
 
 class RewardWeights:
     """Reward scaling weights."""
