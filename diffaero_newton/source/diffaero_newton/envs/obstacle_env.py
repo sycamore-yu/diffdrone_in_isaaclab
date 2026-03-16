@@ -36,8 +36,12 @@ class ObstacleAvoidanceEnv(DroneEnv):
         """Augment base observations with sensor data."""
         obs_dict = super()._get_observations()
 
-        # Compute sensor observations
-        pos = self.drone.p.detach().requires_grad_(True) if not self.drone.p.requires_grad else self.drone.p
+        # Compute sensor observations via dynamics state API
+        drone_state = self.drone.get_state()
+        pos = drone_state["position"]
+        # Keep gradients if already tracked, otherwise enable them
+        if not pos.requires_grad:
+            pos = pos.detach().requires_grad_(True)
         # Use identity quaternion (xyzw) for sensor frame = body frame
         quat_xyzw = torch.zeros(self.num_envs, 4, device=self.device)
         quat_xyzw[:, 3] = 1.0  # w=1 for identity

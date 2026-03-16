@@ -81,7 +81,10 @@ def main():
                        device=device, **algo_kwargs)
 
     print(f"  Algorithm: {type(agent).__name__}")
-    print(f"  Parameters: {sum(p.numel() for p in agent.actor.parameters()):,}")
+    # Parameter counting: APG exposes .actor, PPO/APPO expose .agent, SHAC may vary
+    _net = getattr(agent, "actor", None) or getattr(agent, "agent", None)
+    if _net is not None:
+        print(f"  Parameters: {sum(p.numel() for p in _net.parameters()):,}")
     print(f"\nStarting training for {args.max_iter} iterations...")
 
     start_time = time.time()

@@ -78,8 +78,9 @@ class RacingEnv(DroneEnv):
         gate_yaw = self.gate_yaw[self.target_gates]
         rotmat_w2g = get_gate_rotmat_w2g(gate_yaw)
 
-        drone_pos = self.drone.p
-        drone_vel = self.drone.v if hasattr(self.drone, 'v') else torch.zeros_like(drone_pos)
+        drone_state = self.drone.get_state()
+        drone_pos = drone_state["position"]
+        drone_vel = drone_state.get("velocity", torch.zeros_like(drone_pos))
 
         # Position and velocity in gate frame
         pos_g = torch.bmm(rotmat_w2g, (gate_pos - drone_pos).unsqueeze(-1)).squeeze(-1)
@@ -99,7 +100,7 @@ class RacingEnv(DroneEnv):
 
     def is_passed(self, prev_pos: Tensor) -> Tuple[Tensor, Tensor]:
         """Check if drone passed through or collided with current target gate."""
-        curr_pos = self.drone.p
+        curr_pos = self.drone.get_state()["position"]
         gate_pos = self.gate_pos[self.target_gates]
         gate_yaw = self.gate_yaw[self.target_gates]
 
@@ -123,7 +124,7 @@ class RacingEnv(DroneEnv):
 
     def _get_dones(self) -> Tuple[torch.Tensor, torch.Tensor]:
         """Check for out-of-bounds termination."""
-        pos = self.drone.p
+        pos = self.drone.get_state()["position"]
         oob = torch.any(torch.abs(pos[:, :2]) > self.racing_cfg.xy_bound, dim=1)
         oob = oob | (pos[:, 2] > self.racing_cfg.z_bound)
         terminated = oob
