@@ -3,18 +3,30 @@ import torch
 import os
 import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "source")))
-from diffaero_newton.configs.dynamics_cfg import PointMassCfg
+from diffaero_newton.configs.dynamics_cfg import (
+    ContinuousPointMassCfg,
+    DiscretePointMassCfg,
+    PointMassCfg,
+)
 from diffaero_newton.dynamics.registry import create_dynamics
 import warp as wp
 
 wp.init()
 
-def test_pointmass_dynamics_forward_and_backward():
-    """Test pointmass dynamics integration and basic gradient flow."""
+@pytest.mark.parametrize(
+    ("cfg_cls", "expected_type"),
+    [
+        (PointMassCfg, "ContinuousPointMass"),
+        (ContinuousPointMassCfg, "ContinuousPointMass"),
+        (DiscretePointMassCfg, "DiscretePointMass"),
+    ],
+)
+def test_pointmass_dynamics_forward_and_backward(cfg_cls, expected_type):
+    """Test point-mass integration and gradient flow for all supported variants."""
     device = "cuda" if torch.cuda.is_available() else "cpu"
     num_envs = 2
     
-    cfg = PointMassCfg(
+    cfg = cfg_cls(
         num_envs=num_envs,
         dt=0.01,
         requires_grad=True,
@@ -24,6 +36,7 @@ def test_pointmass_dynamics_forward_and_backward():
     )
     
     pm = create_dynamics(cfg, device=device)
+    assert type(pm).__name__ == expected_type
     
     # Check initial state
     state = pm.get_state()

@@ -9,16 +9,17 @@ app = launch_app()
 
 from diffaero_newton.envs.drone_env import create_env
 from diffaero_newton.configs.drone_env_cfg import DroneEnvCfg
-from diffaero_newton.configs.dynamics_cfg import PointMassCfg
+from diffaero_newton.configs.dynamics_cfg import ContinuousPointMassCfg, DiscretePointMassCfg, PointMassCfg
 
-def test_pointmass_env_step():
+@pytest.mark.parametrize("cfg_cls", [PointMassCfg, ContinuousPointMassCfg, DiscretePointMassCfg])
+def test_pointmass_env_step(cfg_cls):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     num_envs = 2
     
     cfg = DroneEnvCfg()
     cfg.num_envs = num_envs
     cfg.scene.num_envs = num_envs
-    cfg.dynamics = PointMassCfg(num_envs=num_envs, requires_grad=True)
+    cfg.dynamics = cfg_cls(num_envs=num_envs, requires_grad=True)
     
     env = create_env(cfg=cfg, device=device)
     

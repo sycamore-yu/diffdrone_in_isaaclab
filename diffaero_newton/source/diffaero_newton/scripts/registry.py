@@ -65,6 +65,8 @@ ENV_REGISTRY = {
 
 DYNAMICS_REGISTRY = {
     "pointmass": "diffaero_newton.configs.dynamics_cfg.PointMassCfg",
+    "continuous_pointmass": "diffaero_newton.configs.dynamics_cfg.ContinuousPointMassCfg",
+    "discrete_pointmass": "diffaero_newton.configs.dynamics_cfg.DiscretePointMassCfg",
     "quadrotor": "diffaero_newton.configs.dynamics_cfg.QuadrotorCfg",
 }
 
@@ -76,6 +78,14 @@ def build_dynamics_cfg(name: str, num_envs: int, requires_grad: bool, dt: float 
         from diffaero_newton.configs.dynamics_cfg import PointMassCfg
 
         cfg = PointMassCfg(num_envs=num_envs, requires_grad=requires_grad)
+    elif name == "continuous_pointmass":
+        from diffaero_newton.configs.dynamics_cfg import ContinuousPointMassCfg
+
+        cfg = ContinuousPointMassCfg(num_envs=num_envs, requires_grad=requires_grad)
+    elif name == "discrete_pointmass":
+        from diffaero_newton.configs.dynamics_cfg import DiscretePointMassCfg
+
+        cfg = DiscretePointMassCfg(num_envs=num_envs, requires_grad=requires_grad)
     elif name == "quadrotor":
         from diffaero_newton.configs.dynamics_cfg import QuadrotorCfg
 

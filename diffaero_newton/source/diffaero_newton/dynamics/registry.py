@@ -1,4 +1,10 @@
-from diffaero_newton.configs.dynamics_cfg import DynamicsCfg, QuadrotorCfg, PointMassCfg
+from diffaero_newton.configs.dynamics_cfg import (
+    ContinuousPointMassCfg,
+    DiscretePointMassCfg,
+    DynamicsCfg,
+    PointMassCfg,
+    QuadrotorCfg,
+)
 
 def create_dynamics(cfg: DynamicsCfg, device: str = "cpu"):
     """Factory to create the dynamics model based on configuration."""
@@ -18,9 +24,9 @@ def create_dynamics(cfg: DynamicsCfg, device: str = "cpu"):
         )
         return Drone(drone_cfg, device=device)
         
-    elif cfg.model_type == "pointmass":
-        from diffaero_newton.dynamics.pointmass_dynamics import PointMass, PointMassConfig
-        
+    elif cfg.model_type in ("pointmass", "continuous_pointmass"):
+        from diffaero_newton.dynamics.pointmass_dynamics import ContinuousPointMass, PointMassConfig
+
         pm_cfg = PointMassConfig(
             num_envs=cfg.num_envs,
             dt=cfg.dt,
@@ -30,7 +36,21 @@ def create_dynamics(cfg: DynamicsCfg, device: str = "cpu"):
             solver_type=getattr(cfg, "solver_type", "semi_implicit"),
             n_substeps=getattr(cfg, "n_substeps", 1),
         )
-        return PointMass(pm_cfg, device=device)
-        
+        return ContinuousPointMass(pm_cfg, device=device)
+
+    elif cfg.model_type == "discrete_pointmass":
+        from diffaero_newton.dynamics.pointmass_dynamics import DiscretePointMass, DiscretePointMassConfig
+
+        pm_cfg = DiscretePointMassConfig(
+            num_envs=cfg.num_envs,
+            dt=cfg.dt,
+            requires_grad=cfg.requires_grad,
+            mass=getattr(cfg, "mass", 1.0),
+            drag_coeff=getattr(cfg, "drag_coeff", 0.1),
+            solver_type=getattr(cfg, "solver_type", "semi_implicit"),
+            n_substeps=getattr(cfg, "n_substeps", 1),
+        )
+        return DiscretePointMass(pm_cfg, device=device)
+
     else:
         raise ValueError(f"Unknown dynamics model type: {cfg.model_type}")
