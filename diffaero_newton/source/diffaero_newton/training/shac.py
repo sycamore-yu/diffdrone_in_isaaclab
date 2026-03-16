@@ -460,7 +460,7 @@ class SHAC:
             # Get action (retains graph to actor params)
             action, log_prob, entropy = self.agent.get_action(policy_obs)
 
-            next_obs, next_state, loss_terms, reward, extras = self.env.step(action)
+            next_obs, _next_state, loss_terms, reward, extras = self.env.step(action)
             terminated = extras["terminated"]
             truncated = extras["truncated"]
             reset = terminated | truncated
@@ -470,7 +470,7 @@ class SHAC:
             with torch.no_grad():
                 value = self.agent.critic(policy_obs.detach().to(self.agent.device))
 
-            next_policy_obs = self._policy_obs(next_obs).detach()
+            next_policy_obs = extras.get("next_obs_before_reset", self._policy_obs(next_obs))
             next_value_graph = self.agent.target_critic(next_policy_obs.to(self.agent.device))
             next_value = next_value_graph.detach()
                 
@@ -491,7 +491,7 @@ class SHAC:
             # Store in buffer
             self.buffer.add(
                 obs=policy_obs.detach(), 
-                next_obs=next_policy_obs, 
+                next_obs=next_policy_obs.detach(), 
                 action=action.detach(), 
                 loss=loss_terms.detach(),
                 reward=reward.detach(), 
