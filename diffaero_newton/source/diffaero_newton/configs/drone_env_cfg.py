@@ -3,30 +3,23 @@
 from dataclasses import dataclass, field
 from typing import Tuple
 
-import torch
-
 from diffaero_newton.common.constants import (
     DEFAULT_DT,
     DEFAULT_ROLLOUT_HORIZON,
     MAX_EPISODE_LENGTH_S,
     ACTION_DIM,
-    STATE_DIM,
-    POS_BOUNDS_LOW,
-    POS_BOUNDS_HIGH,
-    ACTION_BOUNDS_LOW,
-    ACTION_BOUNDS_HIGH,
+)
+from diffaero_newton.common.isaaclab_compat import (
+    DirectRLEnvCfg,
+    FeatherstoneSolverCfg,
+    InteractiveSceneCfg,
+    NewtonCfg,
+    SimulationCfg,
+    configclass,
 )
 
-
-from isaaclab.envs import DirectRLEnvCfg
-from isaaclab.scene import InteractiveSceneCfg
-from isaaclab.sim import SimulationCfg
-from isaaclab.sim._impl.newton_manager_cfg import NewtonCfg
-from isaaclab.sim._impl.solvers_cfg import FeatherstoneSolverCfg
-from isaaclab.utils import configclass
-
-from diffaero_newton.configs.dynamics_cfg import QuadrotorCfg
 import numpy as np
+import torch
 from gymnasium.spaces import Box
 
 @configclass
@@ -49,29 +42,36 @@ class DroneEnvCfg(DirectRLEnvCfg):
     num_states: int = 0
     
     # We need scene for DirectRLEnvCfg contract even if unused directly by Newton
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=256, env_spacing=2.5)
+    scene: InteractiveSceneCfg = field(
+        default_factory=lambda: InteractiveSceneCfg(num_envs=256, env_spacing=2.5)
+    )
 
     # Required spaces by DirectRLEnvCfg validation
-    observation_space: Box = Box(low=-np.inf, high=np.inf, shape=(21,))
-    action_space: Box = Box(low=0.0, high=1.0, shape=(ACTION_DIM,))
+    observation_space: Box = field(default_factory=lambda: Box(low=-np.inf, high=np.inf, shape=(21,)))
+    action_space: Box = field(default_factory=lambda: Box(low=0.0, high=1.0, shape=(ACTION_DIM,)))
 
     # Custom Drone parameters
     action_scale: float = 1.0
     rollout_horizon: int = DEFAULT_ROLLOUT_HORIZON
+    differentiable_dynamics: bool = True
+    device: str = "cuda" if torch.cuda.is_available() else "cpu"
     initial_position: Tuple[float, float, float] = (0.0, 0.0, 1.0)
     initial_velocity: Tuple[float, float, float] = (0.0, 0.0, 0.0)
     max_episode_length: int = 1500
     termination_height: float = 0.1
 
-    sim: SimulationCfg = SimulationCfg(
-        dt=DEFAULT_DT, 
-        render_interval=4,
-        newton_cfg=NewtonCfg(solver_cfg=FeatherstoneSolverCfg())
+    sim: SimulationCfg = field(
+        default_factory=lambda: SimulationCfg(
+            dt=DEFAULT_DT,
+            render_interval=4,
+            newton_cfg=NewtonCfg(solver_cfg=FeatherstoneSolverCfg()),
+        )
     )
     reward_weights: object = field(default_factory=lambda: RewardWeights())
     viewer: object = field(default_factory=lambda: ViewerCfg())
     events: object = field(default_factory=lambda: None)
-    dynamics: object = field(default_factory=lambda: QuadrotorCfg())
+
+
 
 class RewardWeights:
     """Reward scaling weights."""

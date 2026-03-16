@@ -311,6 +311,29 @@ For each dimension, the following test patterns must be implemented and executab
 - **Environments/Tasks**: `python script/train.py task=<task_name> algo=<algo_name>` - Verifies that specific task+algo combinations parse configs and begin standard rollout in `isaaclab-newton`. 
 - **Sensors**: `pytest tests/test_sensors.py` - Verifies shape and basic correctness of sensor generation within `InteractiveSceneCfg`.
 
+### Current Validated Status
+
+As of 2026-03-12, the current obstacle-training vertical slice has a validated runtime differentiable propagation path:
+
+- `diffaero_newton/source/diffaero_newton/dynamics/drone_dynamics.py` uses Newton-backed state propagation with an explicit autograd bridge.
+- `diffaero_newton/source/diffaero_newton/envs/drone_env.py` enables differentiable dynamics by default for the tested training path.
+- The tested environment and trainer contract is `obs, (loss, reward), terminated, truncated, extras`.
+- The current runtime prefers CUDA when available.
+
+Validated command:
+
+- `conda run -n isaaclab-newton pytest -q diffaero_newton/tests/test_obstacle_training.py`
+
+Validated result:
+
+- `18 passed`
+
+Important scope note:
+
+- This validation only covers the current quadrotor + obstacle avoidance + SHAC slice.
+- It confirms that the current runtime path is Newton-backed and differentiable on that slice.
+- It does not imply that the broader DiffAero migration matrix is complete.
+
 ## Implementation Order
 
 Implement in this order:
