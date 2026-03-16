@@ -294,8 +294,9 @@ class DiscretePointMass(_PointMassBase):
         dt = float(dt or self.config.dt)
         pos = self._state_tensor[:, :3]
         vel = self._state_tensor[:, 7:10]
+        inv_mass = 1.0 / float(self.config.mass)
 
-        acc = self._control_tensor + self.gravity - self.config.drag_coeff * vel
+        acc = self._control_tensor * inv_mass + self.gravity - self.config.drag_coeff * inv_mass * vel
         next_pos = pos + dt * (vel + 0.5 * acc * dt)
         next_vel = vel + dt * acc
 

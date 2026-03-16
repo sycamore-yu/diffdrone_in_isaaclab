@@ -66,6 +66,33 @@ def test_pointmass_dynamics_forward_and_backward(cfg_cls, expected_type):
     state_after_detach = pm.get_state()
     assert not state_after_detach["position"].requires_grad
 
+
+def test_discrete_pointmass_respects_mass_scaling():
+    """The discrete point-mass variant should slow down under the same force when mass increases."""
+    dt = 0.1
+    light = create_dynamics(
+        DiscretePointMassCfg(num_envs=1, dt=dt, requires_grad=False, mass=1.0, drag_coeff=0.0),
+        device="cpu",
+    )
+    heavy = create_dynamics(
+        DiscretePointMassCfg(num_envs=1, dt=dt, requires_grad=False, mass=2.0, drag_coeff=0.0),
+        device="cpu",
+    )
+
+    control = torch.tensor([[1.0, 0.0, 0.0]], dtype=torch.float32)
+    light.apply_control(control)
+    heavy.apply_control(control)
+
+    light.integrate()
+    heavy.integrate()
+
+    light_vx = light.get_flat_state()[0, 7].item()
+    heavy_vx = heavy.get_flat_state()[0, 7].item()
+
+    assert light_vx == pytest.approx(dt * 1.0, rel=1e-5)
+    assert heavy_vx == pytest.approx(dt * 0.5, rel=1e-5)
+    assert heavy_vx < light_vx
+
 if __name__ == "__main__":
     test_pointmass_dynamics_forward_and_backward()
     print("PointMass integration and gradient test passed.")
