@@ -1,11 +1,10 @@
 from typing import Any, Dict, Optional, Tuple, Sequence
-import math
 
 import torch
 import numpy as np
 
 from diffaero_newton.common.isaaclab_compat import DirectRLEnv
-from diffaero_newton.configs.position_control_env_cfg import PositionControlEnvCfg
+from diffaero_newton.configs.position_control_env_cfg import PositionControlEnvCfg, Sim2RealPositionControlEnvCfg
 from diffaero_newton.configs.dynamics_cfg import is_pointmass_model_type
 from diffaero_newton.dynamics.registry import create_dynamics
 from diffaero_newton.common.constants import ACTION_DIM
@@ -165,3 +164,53 @@ class PositionControlEnv(DirectRLEnv):
 
 def create_env(cfg: Optional[PositionControlEnvCfg] = None, **kwargs) -> PositionControlEnv:
     return PositionControlEnv(cfg=cfg, **kwargs)
+
+
+class Sim2RealPositionControlEnv(PositionControlEnv):
+    """Square-target position control variant inspired by DiffAero's sim-to-real task."""
+
+    cfg: Sim2RealPositionControlEnvCfg
+
+    def __init__(self, cfg: Sim2RealPositionControlEnvCfg, render_mode: str | None = None, **kwargs):
+        self.square_positions = None
+        super().__init__(cfg, render_mode, **kwargs)
+        self.square_positions = torch.tensor(
+            [
+                [cfg.square_size, -cfg.square_size, 0.0],
+                [-cfg.square_size, -cfg.square_size, 0.0],
+                [-cfg.square_size, cfg.square_size, 0.0],
+                [cfg.square_size, cfg.square_size, 0.0],
+            ],
+            device=self.device,
+            dtype=torch.float32,
+        )
+        self.update_target()
+
+    def update_target(self):
+        t = self.episode_length_buf.float() * self.step_dt
+        target_index = torch.floor(t / self.cfg.switch_time).long() % self.square_positions.shape[0]
+        self.target_pos = self.square_positions[target_index]
+
+    def _get_dones(self) -> Tuple[torch.Tensor, torch.Tensor]:
+        pos = self.drone.get_state()["position"]
+        p_range = torch.full_like(pos, fill_value=self.cfg.square_size * 2.0)
+        out_of_bound = (torch.abs(pos) > p_range).any(dim=-1)
+        truncated = self.episode_length_buf >= self.max_episode_length
+        return out_of_bound, truncated
+
+    def _sample_targets(self, env_ids: Optional[torch.Tensor] = None):
+        if self.square_positions is None:
+            super()._sample_targets(env_ids)
+            return
+        if env_ids is None:
+            env_ids = torch.arange(self.num_envs, device=self.device)
+        self.update_target()
+        self.target_vel[env_ids] = 0.0
+
+    def step(self, action: torch.Tensor) -> Tuple[Dict, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Dict]:
+        self.update_target()
+        return super().step(action)
+
+
+def create_sim2real_env(cfg: Optional[Sim2RealPositionControlEnvCfg] = None, **kwargs) -> Sim2RealPositionControlEnv:
+    return Sim2RealPositionControlEnv(cfg=cfg or Sim2RealPositionControlEnvCfg(), **kwargs)

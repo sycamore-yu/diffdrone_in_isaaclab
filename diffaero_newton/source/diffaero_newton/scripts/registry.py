@@ -58,6 +58,7 @@ ALGO_REGISTRY = {
 
 ENV_REGISTRY = {
     "position_control": "diffaero_newton.envs.position_control_env.PositionControlEnv",
+    "sim2real_position_control": "diffaero_newton.envs.position_control_env.Sim2RealPositionControlEnv",
     "mapc": "diffaero_newton.envs.mapc_env.MAPCEnv",
     "obstacle_avoidance": "diffaero_newton.envs.obstacle_env.ObstacleAvoidanceEnv",
     "racing": "diffaero_newton.envs.racing_env.RacingEnv",
@@ -120,6 +121,16 @@ def build_env(
         cfg.scene.num_envs = num_envs
         cfg.dynamics = build_dynamics_cfg(dynamics, num_envs=num_envs, requires_grad=differentiable, dt=cfg.sim.dt)
         return PositionControlEnv(cfg=cfg, device=device)
+
+    if name == "sim2real_position_control":
+        from diffaero_newton.configs.position_control_env_cfg import Sim2RealPositionControlEnvCfg
+        from diffaero_newton.envs.position_control_env import Sim2RealPositionControlEnv
+
+        cfg = Sim2RealPositionControlEnvCfg()
+        cfg.num_envs = num_envs
+        cfg.scene.num_envs = num_envs
+        cfg.dynamics = build_dynamics_cfg(dynamics, num_envs=num_envs, requires_grad=differentiable, dt=cfg.sim.dt)
+        return Sim2RealPositionControlEnv(cfg=cfg, device=device)
 
     if name == "mapc":
         from diffaero_newton.configs.mapc_env_cfg import MAPCEnvCfg

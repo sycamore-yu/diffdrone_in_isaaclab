@@ -18,6 +18,7 @@ def test_registry_points_to_real_modules():
     from diffaero_newton.scripts.registry import DYNAMICS_REGISTRY, ENV_REGISTRY
 
     assert ENV_REGISTRY["position_control"] == "diffaero_newton.envs.position_control_env.PositionControlEnv"
+    assert ENV_REGISTRY["sim2real_position_control"] == "diffaero_newton.envs.position_control_env.Sim2RealPositionControlEnv"
     assert ENV_REGISTRY["mapc"] == "diffaero_newton.envs.mapc_env.MAPCEnv"
     assert DYNAMICS_REGISTRY["pointmass"] == "diffaero_newton.configs.dynamics_cfg.PointMassCfg"
     assert DYNAMICS_REGISTRY["continuous_pointmass"] == "diffaero_newton.configs.dynamics_cfg.ContinuousPointMassCfg"
@@ -37,6 +38,7 @@ def test_train_list_runs_without_pythonpath_hack():
     assert result.returncode == 0, result.stderr
     assert "Algorithms:" in result.stdout
     assert "position_control" in result.stdout
+    assert "sim2real_position_control" in result.stdout
 
 
 def test_isaaclab_compat_exports_launch_app():
