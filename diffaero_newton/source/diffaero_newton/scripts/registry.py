@@ -57,6 +57,14 @@ def build_algo(name: str, obs_dim: int, action_dim: int = ACTION_DIM, device: st
         world_device = env.device if hasattr(env, "device") else device
         return World_Agent(cfg=cfg, env=env, device=torch.device(world_device))
 
+    if name == "mashac":
+        from diffaero_newton.training.mashac import MASHACAgent
+        from diffaero_newton.configs.training_cfg import TrainingCfg
+
+        state_dim = kwargs.pop("state_dim", obs_dim)
+        cfg = kwargs.pop("cfg", None) or TrainingCfg(device=device)
+        return MASHACAgent(obs_dim=obs_dim, state_dim=state_dim, action_dim=action_dim, cfg=cfg)
+
     raise ValueError(f"Unknown algorithm: {name}. Available: {', '.join(sorted(ALGO_REGISTRY))}")
 
 
@@ -67,6 +75,7 @@ ALGO_REGISTRY = {
     "appo": "diffaero_newton.training.ppo.AsymmetricPPO",
     "shac": "diffaero_newton.training.shac.SHAC",
     "world": "diffaero_newton.training.dreamerv3.World_Agent",
+    "mashac": "diffaero_newton.training.mashac.MASHAC",
 }
 
 ENV_REGISTRY = {

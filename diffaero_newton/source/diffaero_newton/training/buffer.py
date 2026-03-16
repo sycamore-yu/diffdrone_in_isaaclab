@@ -148,6 +148,56 @@ class RolloutBuffer:
         }
 
 
+class StateRolloutBuffer(RolloutBuffer):
+    """Rollout buffer variant that stores privileged state for centralized critics."""
+
+    def __init__(
+        self,
+        num_envs: int,
+        horizon: int,
+        obs_dim: int,
+        state_dim: int,
+        action_dim: int,
+        device: str = "cuda" if torch.cuda.is_available() else "cpu",
+    ):
+        super().__init__(num_envs, horizon, obs_dim, action_dim, device)
+        self.state_dim = state_dim
+        self.states = torch.zeros(horizon, num_envs, state_dim, device=device)
+        self.next_states = torch.zeros(horizon, num_envs, state_dim, device=device)
+
+    def add(
+        self,
+        obs: torch.Tensor,
+        next_obs: torch.Tensor,
+        action: torch.Tensor,
+        loss: torch.Tensor,
+        reward: torch.Tensor,
+        done: torch.Tensor,
+        state: torch.Tensor,
+        next_state: torch.Tensor,
+        terminated: torch.Tensor = None,
+        reset: torch.Tensor = None,
+        log_prob: Optional[torch.Tensor] = None,
+        value: Optional[torch.Tensor] = None,
+        next_value: Optional[torch.Tensor] = None,
+    ):
+        self.states[self.ptr] = state
+        self.next_states[self.ptr] = next_state
+        super().add(
+            obs=obs,
+            next_obs=next_obs,
+            action=action,
+            loss=loss,
+            reward=reward,
+            done=done,
+            terminated=terminated,
+            reset=reset,
+            log_prob=log_prob,
+            value=value,
+            next_value=next_value,
+        )
+
+
 class PrioritizedRolloutBuffer:
     """Prioritized rollout buffer for importance sampling.
 

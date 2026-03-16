@@ -226,17 +226,37 @@ class MAPCEnv(DirectRLEnv):
         # For mapc, keeping it relatively static is fine. Target formation is set in reset.
         pass
 
-    def step(self, action: torch.Tensor) -> Tuple[Dict, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Dict]:
-        obs, reward, terminated, truncated, extras = super().step(action)
-        extras["terminated"] = terminated
-        extras["truncated"] = truncated
-        
+    def step(self, action: torch.Tensor) -> Tuple[Dict, torch.Tensor, torch.Tensor, torch.Tensor, Dict]:
+        self._pre_physics_step(action)
+        for _ in range(self.decimation):
+            self._apply_action()
+
+        self.episode_length_buf += 1
+
+        obs_before_reset = self._get_observations()
+        state_before_reset = self.drone.get_flat_state().view(self.num_envs, self.n_agents, -1)
         loss_terms = self._get_loss()
-        
-        state_raw = self.drone.get_flat_state()
-        state = state_raw.view(self.num_envs, self.n_agents, -1)
-        
-        return obs, state, loss_terms, reward, extras
+        reward = self._get_rewards()
+        terminated, truncated = self._get_dones()
+        reset_mask = terminated | truncated
+
+        returned_obs = obs_before_reset
+        returned_state = state_before_reset
+        if reset_mask.any():
+            self._reset_idx(reset_mask.nonzero(as_tuple=False).squeeze(-1).tolist())
+            returned_obs = self._get_observations()
+            returned_state = self.drone.get_flat_state().view(self.num_envs, self.n_agents, -1)
+
+        extras = {
+            "reset": reset_mask,
+            "terminated": terminated,
+            "truncated": truncated,
+            "next_obs_before_reset": obs_before_reset["policy"].clone(),
+            "next_state_before_reset": state_before_reset.clone(),
+            "internal_min_distance": self.internal_min_distance.detach().clone(),
+        }
+
+        return returned_obs, returned_state, loss_terms, reward, extras
 
     def detach_graph(self):
         self.actions = self.actions.detach()

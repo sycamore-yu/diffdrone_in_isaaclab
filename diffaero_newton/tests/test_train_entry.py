@@ -19,6 +19,7 @@ def test_registry_points_to_real_modules():
 
     assert ENV_REGISTRY["position_control"] == "diffaero_newton.envs.position_control_env.PositionControlEnv"
     assert ENV_REGISTRY["mapc"] == "diffaero_newton.envs.mapc_env.MAPCEnv"
+    assert ALGO_REGISTRY["mashac"] == "diffaero_newton.training.mashac.MASHAC"
     assert DYNAMICS_REGISTRY["pointmass"] == "diffaero_newton.configs.dynamics_cfg.PointMassCfg"
     assert ALGO_REGISTRY["world"] == "diffaero_newton.training.dreamerv3.World_Agent"
     assert DYNAMICS_REGISTRY["continuous_pointmass"] == "diffaero_newton.configs.dynamics_cfg.ContinuousPointMassCfg"

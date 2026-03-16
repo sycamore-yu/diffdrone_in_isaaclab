@@ -28,7 +28,7 @@ from diffaero_newton.scripts.registry import (
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Unified training entry for diffaero_newton")
-    parser.add_argument("--algo", type=str, default="apg", help="Algorithm: apg, apg_sto, ppo, appo, shac, world")
+    parser.add_argument("--algo", type=str, default="apg", help="Algorithm: apg, apg_sto, ppo, appo, shac, mashac, world")
     parser.add_argument(
         "--env",
         type=str,
@@ -225,6 +225,24 @@ def _run_world(args, env, device: str, action_dim: int):
     print(f"\nTraining complete. Checkpoint saved to {args.save_dir}/")
     print(f"Total time: {time.time() - start_time:.1f}s")
 
+def _run_mashac(args, env, device: str):
+    from diffaero_newton.training.mashac import MASHAC
+
+    cfg = TrainingCfg(
+        rollout_horizon=args.l_rollout,
+        num_iterations=args.max_iter,
+        actor_lr=args.lr,
+        device=device,
+        log_interval=args.log_interval,
+        save_interval=max(args.max_iter + 1, 1000),
+        save_dir=args.save_dir,
+        enable_tensorboard=False,
+    )
+    trainer = MASHAC(env, cfg=cfg)
+    trainer.train()
+    os.makedirs(args.save_dir, exist_ok=True)
+    trainer.agent.save(os.path.join(args.save_dir, "mashac_agent.pt"))
+
 
 def main():
     args = parse_args()
@@ -239,7 +257,7 @@ def main():
     try:
         torch.manual_seed(args.seed)
         requested_device = args.device if torch.cuda.is_available() else "cpu"
-        differentiable = args.algo in ("apg", "apg_sto", "shac")
+        differentiable = args.algo in ("apg", "apg_sto", "shac", "mashac")
 
         print(f"Training: algo={args.algo}, env={args.env}, dynamics={args.dynamics}")
         print(f"  requested_device={requested_device}, n_envs={args.n_envs}, l_rollout={args.l_rollout}, lr={args.lr}")
@@ -263,6 +281,10 @@ def main():
 
         if args.algo == "shac":
             _run_shac(args, env, device)
+            print(f"Training complete. Checkpoint saved to {args.save_dir}/")
+            return
+        if args.algo == "mashac":
+            _run_mashac(args, env, device)
             print(f"Training complete. Checkpoint saved to {args.save_dir}/")
             return
         if args.algo in ("world", "dreamerv3"):
