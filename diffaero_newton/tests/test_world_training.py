@@ -59,3 +59,40 @@ def test_world_agent_steps_position_control_env():
         assert torch.isfinite(next_state).all()
     finally:
         env.close()
+
+
+def test_world_agent_unpacks_gym_style_step_output():
+    class DummyEnv:
+        device = torch.device("cpu")
+
+    agent = build_algo(
+        "world",
+        obs_dim=13,
+        action_dim=4,
+        device="cpu",
+        env=DummyEnv(),
+        cfg={
+            "is_test": True,
+            "state_predictor": {
+                "action_dim": 4,
+                "only_state": True,
+                "enable_rec": False,
+                "use_amp": False,
+            },
+        },
+    )
+
+    next_obs = torch.randn(2, 13)
+    reward = torch.randn(2)
+    terminated = torch.tensor([False, True])
+    truncated = torch.tensor([False, False])
+
+    _, next_state, parsed_reward, done, extras = agent._unpack_env_step(
+        (next_obs, reward, terminated, truncated, {})
+    )
+
+    assert torch.equal(next_state, next_obs)
+    assert torch.equal(parsed_reward, reward)
+    assert torch.equal(done, torch.tensor([0.0, 1.0]))
+    assert torch.equal(extras["terminated"], terminated)
+    assert torch.equal(extras["truncated"], truncated)

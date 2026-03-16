@@ -329,7 +329,7 @@ class World_Agent:
             raise RuntimeError("DreamerV3 world path expected env.step() to return a 5-tuple.")
 
         first, second, third, fourth, fifth = step_out
-        if isinstance(fifth, dict) and isinstance(second, torch.Tensor):
+        if isinstance(fifth, dict) and "terminated" in fifth and "truncated" in fifth:
             next_obs = first
             next_state = second
             reward = fourth
