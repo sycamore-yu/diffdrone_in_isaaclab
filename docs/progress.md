@@ -40,6 +40,11 @@ This document serves as the ground truth for the current actual migration status
 - Missing environment parity: `Sim2RealPositionControl`.
 - Missing tooling parity: Hydra-based train/test/export workflow, sweep tooling, Optuna / WandB integration, and export/deploy utilities.
 
+## Control And Tooling Decisions
+- **Quadrotor control semantics**: treat the current normalized motor-thrust path as the stable baseline. DiffAero-style rate-controller semantics should land as an explicit opt-in controller mode, not as an in-place reinterpretation of existing actions.
+- **Hydra/tooling**: keep `scripts/train.py` as the only stable training entry. Any future Hydra layer should wrap the current registry-backed entry instead of creating a second execution stack.
+- **Deferred services**: Optuna, WandB, and export/deploy are follow-up work after the controller mode and thin Hydra wrapper exist.
+
 ## Validation & Commands
 Currently verified on `main`:
 - `conda run -n isaaclab-newton pytest diffaero_newton/tests/test_train_entry.py -q` (Unified training entry / registry smoke)
