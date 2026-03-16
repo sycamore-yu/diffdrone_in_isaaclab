@@ -34,3 +34,4 @@
 {"actor":"sycamore-yu","comment":null,"created_at":"2026-03-12T18:42:45Z","event_type":"closed","id":34,"issue_id":"diffdroneinisaac_workspace-i8x.4","new_value":"完成: Racing env with figure-8 gate track","old_value":""}
 {"actor":"sycamore-yu","comment":null,"created_at":"2026-03-12T18:42:46Z","event_type":"closed","id":35,"issue_id":"diffdroneinisaac_workspace-i8x.10","new_value":"完成: Unified train.py + registry + regression_matrix.md","old_value":""}
 {"actor":"sycamore-yu","comment":null,"created_at":"2026-03-12T18:42:46Z","event_type":"closed","id":36,"issue_id":"diffdroneinisaac_workspace-i8x.3","new_value":"完成: Position Control + MAPC (已在之前会话中完成)","old_value":""}
+{"actor":"sycamore-yu","comment":null,"created_at":"2026-03-16T19:45:24Z","event_type":"created","id":37,"issue_id":"diffdroneinisaac_workspace-i8x.12","new_value":"","old_value":""}
