@@ -15,11 +15,12 @@ TRAIN_SCRIPT = REPO_ROOT / "diffaero_newton/source/diffaero_newton/scripts/train
 def test_registry_points_to_real_modules():
     sys.path.insert(0, str(REPO_ROOT / "diffaero_newton/source"))
 
-    from diffaero_newton.scripts.registry import DYNAMICS_REGISTRY, ENV_REGISTRY
+    from diffaero_newton.scripts.registry import ALGO_REGISTRY, DYNAMICS_REGISTRY, ENV_REGISTRY
 
     assert ENV_REGISTRY["position_control"] == "diffaero_newton.envs.position_control_env.PositionControlEnv"
     assert ENV_REGISTRY["mapc"] == "diffaero_newton.envs.mapc_env.MAPCEnv"
     assert DYNAMICS_REGISTRY["pointmass"] == "diffaero_newton.configs.dynamics_cfg.PointMassCfg"
+    assert ALGO_REGISTRY["world"] == "diffaero_newton.training.dreamerv3.World_Agent"
 
 
 def test_train_list_runs_without_pythonpath_hack():

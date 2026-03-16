@@ -3,14 +3,16 @@ import torch
 from dataclasses import dataclass, field
 from typing import Tuple
 
-from isaaclab.envs import DirectRLEnvCfg
-from isaaclab.scene import InteractiveSceneCfg
-from isaaclab.sim import SimulationCfg
-from isaaclab.sim._impl.newton_manager_cfg import NewtonCfg
-from isaaclab.sim._impl.solvers_cfg import FeatherstoneSolverCfg
-from isaaclab.utils import configclass
 from gymnasium.spaces import Box
 
+from diffaero_newton.common.isaaclab_compat import (
+    DirectRLEnvCfg,
+    FeatherstoneSolverCfg,
+    InteractiveSceneCfg,
+    NewtonCfg,
+    SimulationCfg,
+    configclass,
+)
 from diffaero_newton.common.constants import (
     DEFAULT_DT,
     ACTION_DIM,
@@ -49,10 +51,10 @@ class PositionControlEnvCfg(DirectRLEnvCfg):
     num_observations: int = 16  # state(13) + goal(3)
     num_states: int = 0
     
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=256, env_spacing=2.5)
+    scene: InteractiveSceneCfg = field(default_factory=lambda: InteractiveSceneCfg(num_envs=256, env_spacing=2.5))
 
-    observation_space: Box = Box(low=-np.inf, high=np.inf, shape=(16,))
-    action_space: Box = Box(low=0.0, high=1.0, shape=(ACTION_DIM,))
+    observation_space: Box = field(default_factory=lambda: Box(low=-np.inf, high=np.inf, shape=(16,)))
+    action_space: Box = field(default_factory=lambda: Box(low=0.0, high=1.0, shape=(ACTION_DIM,)))
 
     # Custom Drone parameters
     action_scale: float = 1.0
@@ -64,10 +66,12 @@ class PositionControlEnvCfg(DirectRLEnvCfg):
     max_target_vel: float = 10.0
     min_target_vel: float = 5.0
 
-    sim: SimulationCfg = SimulationCfg(
-        dt=DEFAULT_DT, 
-        render_interval=4,
-        newton_cfg=NewtonCfg(solver_cfg=FeatherstoneSolverCfg())
+    sim: SimulationCfg = field(
+        default_factory=lambda: SimulationCfg(
+            dt=DEFAULT_DT,
+            render_interval=4,
+            newton_cfg=NewtonCfg(solver_cfg=FeatherstoneSolverCfg()),
+        )
     )
     
     reward_weights: object = field(default_factory=lambda: PCRewardWeights())

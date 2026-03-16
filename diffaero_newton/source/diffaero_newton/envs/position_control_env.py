@@ -4,7 +4,7 @@ import math
 import torch
 import numpy as np
 
-from isaaclab.envs import DirectRLEnv
+from diffaero_newton.common.isaaclab_compat import DirectRLEnv
 from diffaero_newton.configs.position_control_env_cfg import PositionControlEnvCfg
 from diffaero_newton.dynamics.registry import create_dynamics
 from diffaero_newton.common.constants import ACTION_DIM

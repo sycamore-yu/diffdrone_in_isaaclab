@@ -28,7 +28,7 @@ from diffaero_newton.scripts.registry import (
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Unified training entry for diffaero_newton")
-    parser.add_argument("--algo", type=str, default="apg", help="Algorithm: apg, apg_sto, ppo, appo, shac")
+    parser.add_argument("--algo", type=str, default="apg", help="Algorithm: apg, apg_sto, ppo, appo, shac, world")
     parser.add_argument(
         "--env",
         type=str,
@@ -44,6 +44,12 @@ def parse_args():
     parser.add_argument("--device", type=str, default="cuda", help="Device")
     parser.add_argument("--save_dir", type=str, default="checkpoints", help="Checkpoint save directory")
     parser.add_argument("--log_interval", type=int, default=10, help="Log every N iterations")
+    parser.add_argument("--world_warmup_steps", type=int, default=32, help="Replay warmup transitions for world")
+    parser.add_argument("--world_min_ready_steps", type=int, default=8, help="Minimum replay steps before world updates")
+    parser.add_argument("--world_batch_size", type=int, default=8, help="World-model batch size")
+    parser.add_argument("--world_batch_length", type=int, default=8, help="World-model sequence length")
+    parser.add_argument("--world_imagine_length", type=int, default=8, help="Dreamer imagination horizon")
+    parser.add_argument("--world_update_freq", type=int, default=1, help="World-model updates per env step once ready")
     parser.add_argument("--list", action="store_true", help="List available algorithms and environments")
     return parser.parse_args()
 
@@ -143,6 +149,78 @@ def _run_shac(args, env, device: str):
     trainer.agent.save(os.path.join(args.save_dir, "shac_agent.pt"))
 
 
+def _build_world_cfg(args, action_dim: int, device: str) -> dict[str, Any]:
+    rollout = max(args.l_rollout, 1)
+    total_transitions = max(args.n_envs * rollout * max(args.max_iter, 1), args.n_envs * 64)
+    batch_length = max(2, min(args.world_batch_length, rollout))
+    batch_size = max(1, min(args.world_batch_size, args.n_envs))
+    return {
+        "state_predictor": {
+            "action_dim": action_dim,
+            "only_state": True,
+            "enable_rec": False,
+            "use_amp": str(device).startswith("cuda"),
+            "worldmodel_update_freq": max(1, args.world_update_freq),
+        },
+        "replaybuffer": {
+            "max_length": max(total_transitions * 2, args.n_envs * (batch_length + 4)),
+            "warmup_length": max(0, args.world_warmup_steps),
+            "min_ready_steps": max(1, args.world_min_ready_steps),
+            "store_on_gpu": str(device).startswith("cuda"),
+        },
+        "world_state_env": {
+            "batch_size": batch_size,
+            "batch_length": batch_length,
+            "imagine_length": max(2, args.world_imagine_length),
+        },
+    }
+
+
+def _run_world(args, env, device: str, action_dim: int):
+    if hasattr(env, "detach_graph"):
+        env.detach_graph()
+
+    initial_state = get_env_state(env)
+    if initial_state is None:
+        raise RuntimeError(f"Environment '{args.env}' does not expose state required for DreamerV3/world.")
+
+    agent = build_algo(
+        "world",
+        obs_dim=initial_state.shape[-1],
+        action_dim=action_dim,
+        device=device,
+        env=env,
+        cfg=_build_world_cfg(args, action_dim=action_dim, device=device),
+    )
+
+    state = initial_state.to(agent.device)
+    print(f"  Algorithm: {type(agent).__name__}")
+    print(f"  Parameters: {sum(param.numel() for param in agent.state_model.parameters()):,} (world model)")
+    print(f"\nStarting training for {args.max_iter} iterations...")
+
+    start_time = time.time()
+    for iteration in range(1, args.max_iter + 1):
+        metrics: dict[str, float] = {}
+        last_reward = 0.0
+        last_done = 0.0
+        for _ in range(args.l_rollout):
+            state, policy_info, _, reward_mean, done_mean = agent.step(state)
+            last_reward = reward_mean
+            last_done = done_mean
+            metrics.update({key: float(value) for key, value in policy_info.items()})
+        metrics.setdefault("reward_mean", last_reward)
+        metrics.setdefault("done_mean", last_done)
+
+        if iteration % args.log_interval == 0 or iteration == 1:
+            elapsed = time.time() - start_time
+            print(f"  [{iteration}/{args.max_iter}] {elapsed:.1f}s | {_metrics_to_str(metrics)}")
+
+    os.makedirs(args.save_dir, exist_ok=True)
+    agent.save(args.save_dir)
+    print(f"\nTraining complete. Checkpoint saved to {args.save_dir}/")
+    print(f"Total time: {time.time() - start_time:.1f}s")
+
+
 def main():
     args = parse_args()
     if args.list:
@@ -181,6 +259,9 @@ def main():
         if args.algo == "shac":
             _run_shac(args, env, device)
             print(f"Training complete. Checkpoint saved to {args.save_dir}/")
+            return
+        if args.algo in ("world", "dreamerv3"):
+            _run_world(args, env, device, action_dim)
             return
 
         algo_kwargs: dict[str, Any] = {"lr": args.lr, "l_rollout": args.l_rollout}

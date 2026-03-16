@@ -103,6 +103,41 @@ except BaseException:
             if env_ids_tensor.numel() > 0:
                 self.episode_length_buf[env_ids_tensor] = 0
 
+        def reset(self):
+            """Reset all environments and return observations."""
+            env_ids = list(range(self.num_envs))
+            self._reset_idx(env_ids)
+            if hasattr(self, "_get_observations"):
+                return self._get_observations(), {}
+            return None, {}
+
+        def step(self, action):
+            """Approximate IsaacLab's DirectRLEnv step contract for tests."""
+            if hasattr(self, "_pre_physics_step"):
+                self._pre_physics_step(action)
+            if hasattr(self, "_apply_action"):
+                self._apply_action()
+
+            self.episode_length_buf += 1
+
+            obs = self._get_observations() if hasattr(self, "_get_observations") else None
+            reward = self._get_rewards() if hasattr(self, "_get_rewards") else torch.zeros(self.num_envs, device=self.device)
+            if hasattr(self, "_get_dones"):
+                terminated, truncated = self._get_dones()
+            else:
+                terminated = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+                truncated = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+
+            reset_mask = terminated | truncated
+            if reset_mask.any():
+                self._reset_idx(reset_mask.nonzero(as_tuple=False).squeeze(-1).tolist())
+                obs = self._get_observations() if hasattr(self, "_get_observations") else obs
+
+            return obs, reward, terminated, truncated, {}
+
+        def close(self):
+            """Mirror the real environment API."""
+
 
 class _NullApp:
     """Headless app stub used when IsaacLab's AppLauncher is unavailable."""
