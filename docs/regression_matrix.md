@@ -24,9 +24,10 @@ conda run -n isaaclab-newton python diffaero_newton/tests/test_ppo_training.py
 conda run -n isaaclab-newton python diffaero_newton/tests/test_obstacle_training.py
 
 # Unified training entry (smoke test)
-PYTHONPATH=diffaero_newton/source:$PYTHONPATH \
-  conda run -n isaaclab-newton python diffaero_newton/source/diffaero_newton/scripts/train.py \
-  --algo apg --max_iter 3 --log_interval 1 --n_envs 8 --l_rollout 4
+conda run -n isaaclab-newton python diffaero_newton/source/diffaero_newton/scripts/train.py --list
+conda run -n isaaclab-newton python diffaero_newton/source/diffaero_newton/scripts/train.py \
+  --algo apg --env position_control --dynamics pointmass \
+  --max_iter 3 --log_interval 1 --n_envs 8 --l_rollout 4
 ```
 
 ## Not Yet Migrated

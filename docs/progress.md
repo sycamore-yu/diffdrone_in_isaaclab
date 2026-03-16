@@ -40,4 +40,5 @@ Currently working validation scripts:
 - `python test_sensors.py` (Camera/LiDAR/RelPos sensor gradient flow test)
 - `python test_apg_training.py` (APG + APGStochastic training loop test)
 - `python test_ppo_training.py` (PPO + AsymmetricPPO training loop test)
-- `python scripts/train.py --algo apg --max_iter 3` (Unified training entry smoke test)
+- `conda run -n isaaclab-newton python diffaero_newton/source/diffaero_newton/scripts/train.py --list` (Unified training entry import/registry smoke test)
+- `conda run -n isaaclab-newton python diffaero_newton/source/diffaero_newton/scripts/train.py --algo apg --env position_control --dynamics pointmass --max_iter 3 --log_interval 1 --n_envs 8 --l_rollout 4` (Env-backed unified training entry smoke test)
