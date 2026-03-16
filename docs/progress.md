@@ -18,7 +18,7 @@ This document serves as the ground truth for the current actual migration status
 - [ ] **DreamerV3 / world**: Partially present under `training/dreamerv3`, but not wired into `scripts/registry.py` or the unified training entry; treat as not landed capability on `main`
 
 ### Dynamics
-- [ ] **PointMass**: Partially migrated. Newton-backed point-mass environments run, but low-level differentiable propagation is still broken on `main` (`test_pointmass_dynamics.py` currently fails). Also missing DiffAero's explicit `continuous_pointmass` / `discrete_pointmass` split.
+- [x] **PointMass**: Implemented with explicit `pointmass` (backward-compatible alias), `continuous_pointmass`, and `discrete_pointmass` model options. Low-level differentiable propagation now passes `test_pointmass_dynamics.py`, and both model variants are wired into the unified training entry.
 - [x] **Quadrotor**: Implemented with Newton + Warp autograd bridge. Low-level action-to-state backprop works on `main`, and obstacle-task differentiable loss tests pass.
 - [ ] **DiffAero Quadrotor Semantics**: Not yet matched 1:1. Current mainline quadrotor uses direct normalized motor thrust input and does not yet reproduce DiffAero's rate-controller-oriented semantics or full aerodynamic model details.
 
@@ -36,7 +36,7 @@ This document serves as the ground truth for the current actual migration status
 
 ## Gaps Relative to Reference DiffAero
 - Missing algorithms on main: `SHA2C`, `MASHAC`, and a registry-backed `world` / DreamerV3 path.
-- Missing dynamics parity: split continuous/discrete point-mass models, full DiffAero-like quadrotor control semantics, and clearer frame/control abstractions from `reference/diffaero/dynamics`.
+- Missing dynamics parity: full DiffAero-like quadrotor control semantics, and clearer frame/control abstractions from `reference/diffaero/dynamics`.
 - Missing environment parity: `Sim2RealPositionControl`.
 - Missing tooling parity: Hydra-based train/test/export workflow, sweep tooling, Optuna / WandB integration, and export/deploy utilities.
 
@@ -46,10 +46,9 @@ Currently verified on `main`:
 - `conda run -n isaaclab-newton pytest diffaero_newton/tests/test_ppo_training.py -q` (PPO / APPO training checks)
 - `conda run -n isaaclab-newton pytest diffaero_newton/tests/test_position_control.py -q` (Position control environment smoke)
 - `conda run -n isaaclab-newton pytest diffaero_newton/tests/test_obstacle_training.py -q` (Obstacle env + SHAC integration, including differentiable-loss path)
-- `conda run -n isaaclab-newton pytest diffaero_newton/tests/test_pointmass_env.py -q` (Point-mass environment propagation smoke)
+- `conda run -n isaaclab-newton pytest diffaero_newton/tests/test_pointmass_dynamics.py -q` (Low-level point-mass differentiability for alias/continuous/discrete variants)
+- `conda run -n isaaclab-newton pytest diffaero_newton/tests/test_pointmass_env.py -q` (Point-mass environment propagation smoke for alias/continuous/discrete variants)
 - `conda run -n isaaclab-newton python diffaero_newton/source/diffaero_newton/scripts/train.py --list` (Unified training entry import/registry smoke test)
 - `conda run -n isaaclab-newton python diffaero_newton/source/diffaero_newton/scripts/train.py --algo apg --env position_control --dynamics pointmass --max_iter 3 --log_interval 1 --n_envs 8 --l_rollout 4` (Env-backed unified training entry smoke test)
-
-Known failing validation on `main`:
-- `conda run -n isaaclab-newton pytest diffaero_newton/tests/test_pointmass_dynamics.py -q`
-  - Current failure: low-level `PointMass` state propagation does not retain a differentiable autograd path, so `loss.backward()` on `pm.get_flat_state()` raises that the tensor has no `grad_fn`.
+- `conda run -n isaaclab-newton python diffaero_newton/source/diffaero_newton/scripts/train.py --algo apg --env position_control --dynamics continuous_pointmass --max_iter 1 --l_rollout 1 --n_envs 2 --device cpu --log_interval 1` (Continuous point-mass unified entry smoke)
+- `conda run -n isaaclab-newton python diffaero_newton/source/diffaero_newton/scripts/train.py --algo apg --env position_control --dynamics discrete_pointmass --max_iter 1 --l_rollout 1 --n_envs 2 --device cpu --log_interval 1` (Discrete point-mass unified entry smoke)

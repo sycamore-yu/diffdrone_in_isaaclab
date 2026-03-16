@@ -20,6 +20,8 @@ def test_registry_points_to_real_modules():
     assert ENV_REGISTRY["position_control"] == "diffaero_newton.envs.position_control_env.PositionControlEnv"
     assert ENV_REGISTRY["mapc"] == "diffaero_newton.envs.mapc_env.MAPCEnv"
     assert DYNAMICS_REGISTRY["pointmass"] == "diffaero_newton.configs.dynamics_cfg.PointMassCfg"
+    assert DYNAMICS_REGISTRY["continuous_pointmass"] == "diffaero_newton.configs.dynamics_cfg.ContinuousPointMassCfg"
+    assert DYNAMICS_REGISTRY["discrete_pointmass"] == "diffaero_newton.configs.dynamics_cfg.DiscretePointMassCfg"
 
 
 def test_train_list_runs_without_pythonpath_hack():

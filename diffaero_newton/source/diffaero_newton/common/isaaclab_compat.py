@@ -103,6 +103,34 @@ except BaseException:
             if env_ids_tensor.numel() > 0:
                 self.episode_length_buf[env_ids_tensor] = 0
 
+        def reset(self, seed: int | None = None, options: dict[str, Any] | None = None):
+            """Reset all environments and return the current observations."""
+
+            if seed is not None:
+                torch.manual_seed(seed)
+            self._reset_idx(torch.arange(self.num_envs, device=self.device))
+            return self._get_observations(), {}
+
+        def step(self, action: torch.Tensor):
+            """Run one vectorized environment step using the DirectRLEnv hook contract."""
+
+            self._pre_physics_step(action)
+            for _ in range(self.decimation):
+                self._apply_action()
+
+            self.episode_length_buf += 1
+            obs = self._get_observations()
+            reward = self._get_rewards()
+            terminated, truncated = self._get_dones()
+            reset_mask = terminated | truncated
+            if reset_mask.any():
+                self._reset_idx(reset_mask.nonzero(as_tuple=False).squeeze(-1).tolist())
+                obs = self._get_observations()
+            return obs, reward, terminated, truncated, {}
+
+        def close(self):
+            """Mirror IsaacLab's close hook."""
+
 
 class _NullApp:
     """Headless app stub used when IsaacLab's AppLauncher is unavailable."""

@@ -35,7 +35,12 @@ def parse_args():
         default="position_control",
         help="Environment: position_control, mapc, obstacle_avoidance, racing",
     )
-    parser.add_argument("--dynamics", type=str, default="pointmass", help="Dynamics model: pointmass, quadrotor")
+    parser.add_argument(
+        "--dynamics",
+        type=str,
+        default="pointmass",
+        help="Dynamics model: pointmass, continuous_pointmass, discrete_pointmass, quadrotor",
+    )
     parser.add_argument("--max_iter", type=int, default=100, help="Maximum training iterations")
     parser.add_argument("--l_rollout", type=int, default=16, help="Rollout length per iteration")
     parser.add_argument("--n_envs", type=int, default=64, help="Number of parallel environments")
