@@ -21,6 +21,7 @@ wp.init()
         (DiscretePointMassCfg, "DiscretePointMass"),
     ],
 )
+@pytest.mark.gpu_smoke
 def test_pointmass_dynamics_forward_and_backward(cfg_cls, expected_type):
     """Test point-mass integration and gradient flow for all supported variants."""
     device = "cuda" if torch.cuda.is_available() else "cpu"

@@ -37,6 +37,16 @@ Treat IsaacLab runtime launch and the project's Newton-only env shim as separate
 - Do not add broad silent fallback layers that hide IsaacLab import or runtime failures.
 - When environment/runtime behavior is unclear, query official IsaacLab documentation first and compare against local `reference/IsaacLab` and `reference/newton` before adding compatibility code.
 
+## Validation Strategy
+
+Validation should distinguish between three layers instead of treating every smoke test as equivalent.
+
+- `runtime_preflight`: import and launch wiring checks such as registry lookup, script entry, and launch/shim contracts.
+- `cpu_smoke`: fast contract tests for world-model paths, lightweight RL loops, and explicit CPU-only fallback coverage.
+- `gpu_smoke`: the actual differentiable physics and accelerator-backed training paths that represent the intended Newton + IsaacLab operating mode.
+
+CPU smoke is useful for quick feedback, but it is not the final quality gate for this project. Core differentiable dynamics and main training paths should have explicit GPU-backed smoke coverage when CUDA is available.
+
 ## Target Architecture
 
 The project should stay split into four layers.
@@ -326,8 +336,8 @@ As of 2026-03-12, the current obstacle-training vertical slice has a validated r
 
 - `diffaero_newton/source/diffaero_newton/dynamics/drone_dynamics.py` uses Newton-backed state propagation with an explicit autograd bridge.
 - `diffaero_newton/source/diffaero_newton/envs/drone_env.py` enables differentiable dynamics by default for the tested training path.
-- The tested environment and trainer contract is `obs, (loss, reward), terminated, truncated, extras`.
-- The current runtime prefers CUDA when available.
+- The shared environment/trainer contract on `main` is `obs, state, loss_terms, reward, extras`.
+- Most test and training paths prefer CUDA when available, but a few contract-level smoke tests intentionally pin CPU to keep subprocess and world-model validation lightweight.
 
 Validated command:
 

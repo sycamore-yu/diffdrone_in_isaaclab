@@ -6,6 +6,7 @@ from diffaero_newton.envs.position_control_env import create_sim2real_env
 
 
 def test_sim2real_position_control_env_updates_square_targets():
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     cfg = Sim2RealPositionControlEnvCfg()
     cfg.num_envs = 2
     cfg.scene.num_envs = 2
@@ -13,12 +14,12 @@ def test_sim2real_position_control_env_updates_square_targets():
     cfg.square_size = 1.5
     cfg.dynamics = PointMassCfg(num_envs=2, requires_grad=True)
 
-    env = create_sim2real_env(cfg=cfg, device="cpu")
+    env = create_sim2real_env(cfg=cfg, device=device)
 
     try:
         env.reset()
         initial_target = env.target_pos.clone()
-        actions = torch.zeros(2, 4, device="cpu", requires_grad=True)
+        actions = torch.zeros(2, 4, device=device, requires_grad=True)
 
         for _ in range(3):
             obs, state, loss_terms, reward, extras = env.step(actions)
@@ -27,6 +28,7 @@ def test_sim2real_position_control_env_updates_square_targets():
         assert state.shape[0] == 2
         assert loss_terms.shape == (2,)
         assert reward.shape == (2,)
+        assert state.device.type == torch.device(device).type
         assert "terminated" in extras and "truncated" in extras
         assert not torch.allclose(env.target_pos, initial_target)
     finally:

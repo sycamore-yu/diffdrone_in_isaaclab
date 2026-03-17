@@ -1,4 +1,9 @@
-"""Preflight checks for IsaacLab runtime availability on the host environment."""
+"""Launch-layer preflight checks for IsaacLab availability on the host environment.
+
+This script intentionally validates only the real IsaacSim/IsaacLab launcher path used
+by this repository's entrypoints. It does not claim that the full IsaacLab env/sim
+stack is importable or stable on the current machine.
+"""
 
 from __future__ import annotations
 
@@ -38,7 +43,21 @@ def run_checks() -> list[dict[str, Any]]:
 
 def main():
     results = run_checks()
-    print(json.dumps(results, indent=2))
+    payload = {
+        "scope": "launch_preflight",
+        "validates": [
+            "isaacsim import",
+            "isaaclab.app import",
+            "headless AppLauncher startup",
+        ],
+        "does_not_validate": [
+            "full isaaclab.envs / isaaclab.sim stack importability",
+            "task-specific environment construction",
+            "GPU training correctness",
+        ],
+        "results": results,
+    }
+    print(json.dumps(payload, indent=2))
     if not all(item["ok"] for item in results):
         raise SystemExit(1)
 

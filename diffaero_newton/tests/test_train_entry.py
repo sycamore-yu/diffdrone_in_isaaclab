@@ -9,12 +9,14 @@ from pathlib import Path
 
 import torch
 from gymnasium.spaces import Box
+import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TRAIN_SCRIPT = REPO_ROOT / "diffaero_newton/source/diffaero_newton/scripts/train.py"
 
 
+@pytest.mark.runtime_preflight
 def test_registry_points_to_real_modules():
     sys.path.insert(0, str(REPO_ROOT / "diffaero_newton/source"))
 
@@ -30,6 +32,7 @@ def test_registry_points_to_real_modules():
     assert DYNAMICS_REGISTRY["discrete_pointmass"] == "diffaero_newton.configs.dynamics_cfg.DiscretePointMassCfg"
 
 
+@pytest.mark.runtime_preflight
 def test_train_list_runs_without_pythonpath_hack():
     result = subprocess.run(
         [sys.executable, str(TRAIN_SCRIPT), "--list"],
@@ -46,6 +49,7 @@ def test_train_list_runs_without_pythonpath_hack():
     assert "sim2real_position_control" in result.stdout
 
 
+@pytest.mark.runtime_preflight
 def test_isaaclab_launch_exports_launch_app():
     sys.path.insert(0, str(REPO_ROOT / "diffaero_newton/source"))
 
@@ -54,6 +58,7 @@ def test_isaaclab_launch_exports_launch_app():
     assert callable(launch_app)
 
 
+@pytest.mark.runtime_preflight
 def test_direct_rl_shim_honors_decimation():
     sys.path.insert(0, str(REPO_ROOT / "diffaero_newton/source"))
 

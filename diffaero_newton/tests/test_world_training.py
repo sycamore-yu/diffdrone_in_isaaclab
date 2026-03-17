@@ -2,17 +2,18 @@
 
 from __future__ import annotations
 
+import pytest
 import torch
 
 from diffaero_newton.scripts.registry import build_algo, build_env, get_env_state
 
 
-def test_world_agent_steps_position_control_env():
+def _run_world_agent_steps_position_control_env(device: str) -> None:
     env = build_env(
         name="position_control",
         dynamics="pointmass",
         num_envs=2,
-        device="cpu",
+        device=device,
         differentiable=False,
     )
 
@@ -24,20 +25,20 @@ def test_world_agent_steps_position_control_env():
             "world",
             obs_dim=state.shape[-1],
             action_dim=action_dim,
-            device="cpu",
+            device=device,
             env=env,
             cfg={
                 "state_predictor": {
                     "action_dim": action_dim,
                     "only_state": True,
                     "enable_rec": False,
-                    "use_amp": False,
+                    "use_amp": device.startswith("cuda"),
                 },
                 "replaybuffer": {
                     "max_length": 128,
                     "warmup_length": 1_000,
                     "min_ready_steps": 8,
-                    "store_on_gpu": False,
+                    "store_on_gpu": device.startswith("cuda"),
                 },
                 "world_state_env": {
                     "batch_size": 2,
@@ -50,7 +51,7 @@ def test_world_agent_steps_position_control_env():
         next_state, policy_info, env_info, reward_mean, done_mean = agent.step(state)
 
         assert next_state.shape == state.shape
-        assert next_state.device.type == "cpu"
+        assert next_state.device.type == torch.device(device).type
         assert isinstance(policy_info, dict)
         assert "terminated" in env_info
         assert "truncated" in env_info
@@ -61,6 +62,19 @@ def test_world_agent_steps_position_control_env():
         env.close()
 
 
+@pytest.mark.cpu_smoke
+def test_world_agent_steps_position_control_env_cpu():
+    _run_world_agent_steps_position_control_env(device="cpu")
+
+
+@pytest.mark.gpu_smoke
+def test_world_agent_steps_position_control_env_gpu():
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA is required for gpu_smoke world coverage")
+    _run_world_agent_steps_position_control_env(device="cuda")
+
+
+@pytest.mark.cpu_smoke
 def test_world_agent_unpacks_gym_style_step_output():
     class DummyEnv:
         device = torch.device("cpu")

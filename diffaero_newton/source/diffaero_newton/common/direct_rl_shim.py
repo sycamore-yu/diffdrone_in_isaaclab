@@ -1,9 +1,13 @@
 """Project-local DirectRLEnv shim for Newton-only headless tasks.
 
-This module is intentionally explicit: it does not try to import or mirror the full
+This module is intentionally narrow: it does not try to import or mirror the full
 IsaacLab environment stack. The classes here exist because the project's Newton-only
-tasks currently rely on a lightweight vectorized RL contract that can run without the
-full IsaacLab/Kit environment layer.
+tasks currently rely on a lightweight vectorized RL hook contract that can run without
+the full IsaacLab/Kit environment layer.
+
+It should not be treated as a drop-in replacement for IsaacLab's ``DirectRLEnv``.
+Numerical kernels, rollout logic, and task costs remain in the project's dynamics and
+environment implementations rather than in this shim.
 """
 
 from __future__ import annotations
@@ -25,7 +29,7 @@ __all__ = [
 
 
 class DirectRLEnvCfg:
-    """Lightweight stand-in for the subset of DirectRLEnvCfg used in this project."""
+    """Stand-in for the small DirectRLEnvCfg subset used by Newton-only tasks."""
 
 
 @dataclass
@@ -66,7 +70,7 @@ def configclass(cls: type) -> type:
 
 
 class DirectRLEnv:
-    """Small subset of IsaacLab's DirectRLEnv API used by this project."""
+    """Minimal RL hook surface used by this project's Newton-only environments."""
 
     cfg: DirectRLEnvCfg
 
@@ -109,7 +113,12 @@ class DirectRLEnv:
         return self._get_observations(), {}
 
     def step(self, action: torch.Tensor):
-        """Run one vectorized environment step using the project RL hook contract."""
+        """Run one vectorized environment step using the shim's gym-like test contract.
+
+        Project trainers may wrap or reinterpret these values. This shim intentionally
+        does not define the higher-level training tuple semantics used elsewhere in the
+        repository.
+        """
 
         self._pre_physics_step(action)
         for _ in range(self.decimation):

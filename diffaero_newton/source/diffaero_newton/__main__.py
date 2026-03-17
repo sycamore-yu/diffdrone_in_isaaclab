@@ -1,13 +1,21 @@
 """Main entry point for DiffAero Newton training."""
 
+from __future__ import annotations
+
 import argparse
-from isaaclab.app import AppLauncher
+import sys
+from pathlib import Path
+
+PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+if str(PACKAGE_ROOT) not in sys.path:
+    sys.path.insert(0, str(PACKAGE_ROOT))
+
+from diffaero_newton.common.isaaclab_launch import add_app_launcher_args, launch_app
 
 
 def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="DiffAero Newton Training")
-    AppLauncher.add_app_launcher_args(parser)
 
     # Environment
     parser.add_argument("--num_envs", type=int, default=256, help="Number of environments")
@@ -29,16 +37,16 @@ def parse_args():
     # Device (IsaacLab AppLauncher already adds --device natively)
     # The --device argument is parsed by AppLauncher
 
+    add_app_launcher_args(parser)
     return parser.parse_args()
 
 
 def main():
     """Main training loop."""
     args = parse_args()
-    
-    # Launch IsaacLab Simulation App
-    app_launcher = AppLauncher(args)
-    simulation_app = app_launcher.app
+
+    # Launch IsaacLab through the shared runtime helper used by other entrypoints.
+    simulation_app = launch_app(args=args)
 
     # Import envs and configs AFTER app launcher to avoid Kit errors
     import torch
@@ -95,7 +103,8 @@ def main():
         print("\nTraining interrupted by user")
 
     print("Training complete!")
-    simulation_app.close()
+    if simulation_app is not None:
+        simulation_app.close()
 
 
 if __name__ == "__main__":
