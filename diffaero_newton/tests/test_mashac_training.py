@@ -87,3 +87,31 @@ def test_mashac_training_iteration():
         env.close()
         if app is not None:
             app.close()
+
+
+def test_mashac_collect_rollout_returns_detached_observation():
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    env = _make_env(device=device)
+    trainer = MASHAC(
+        env,
+        cfg=TrainingCfg(
+            device=device,
+            rollout_horizon=2,
+            num_iterations=2,
+            save_interval=1000,
+            enable_tensorboard=False,
+        ),
+    )
+
+    try:
+        obs, _ = env.reset()
+        next_obs = trainer._collect_rollout(obs)
+        policy_obs = next_obs["policy"] if isinstance(next_obs, dict) else next_obs
+
+        assert not policy_obs.requires_grad
+
+        next_obs = trainer._collect_rollout(next_obs)
+        next_policy_obs = next_obs["policy"] if isinstance(next_obs, dict) else next_obs
+        assert not next_policy_obs.requires_grad
+    finally:
+        env.close()

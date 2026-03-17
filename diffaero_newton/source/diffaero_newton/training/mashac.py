@@ -267,7 +267,9 @@ class MASHAC:
         self.buffer.mean_entropy = entropy_accum.mean() / self.cfg.rollout_horizon
         final_state = self._flatten_state(self._get_env_state()).detach()
         self.buffer.bootstrap(self.agent.target_critic(final_state.to(self.agent.device)).detach())
-        return obs
+        if isinstance(obs, dict):
+            return {key: value.detach() for key, value in obs.items()}
+        return obs.detach()
 
     def _log_metrics(self, metrics: Dict[str, float]):
         if self.writer is None:
