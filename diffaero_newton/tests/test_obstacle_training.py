@@ -9,6 +9,19 @@ import torch
 import numpy as np
 from pathlib import Path
 
+
+def _prepare_non_resetting_step(env) -> None:
+    """Place the drone in a safe state so a single differentiable step does not reset."""
+    env.episode_length_buf.zero_()
+    state = env.drone.get_flat_state().detach().clone()
+    state[:, :3] = torch.tensor([10.0, 10.0, 10.0], device=env.device)
+    state[:, 3:7] = torch.tensor([1.0, 0.0, 0.0, 0.0], device=env.device)
+    state[:, 7:10] = 0.0
+    state[:, 10:13] = 0.0
+    env.drone.set_state(state)
+    env.goal_position[:] = state[:, :3] + torch.tensor([1.0, 0.0, 0.0], device=env.device)
+
+
 # Test fixtures
 @pytest.fixture
 def device():
@@ -312,10 +325,12 @@ class TestIntegration:
         cfg = DroneEnvCfg(num_envs=num_envs)
         env = DroneEnv(cfg=cfg, device=str(device))
         env.reset()
+        _prepare_non_resetting_step(env)
 
-        action = torch.full((num_envs, 4), 0.5, device=device, requires_grad=True)
-        _, _state, loss, _reward, _extras = env.step(action)
+        action = torch.full((num_envs, 4), 0.1, device=device, requires_grad=True)
+        _, _state, loss, _reward, extras = env.step(action)
 
+        assert not extras["reset"].any()
         assert loss.requires_grad
         loss.sum().backward()
         assert action.grad is not None
@@ -330,10 +345,12 @@ class TestIntegration:
         cfg = DroneEnvCfg(num_envs=num_envs)
         env = DroneEnv(cfg=cfg, device=str(cuda_device))
         env.reset()
+        _prepare_non_resetting_step(env)
 
-        action = torch.full((num_envs, 4), 0.5, device=cuda_device, requires_grad=True)
-        _, _state, loss, _reward, _extras = env.step(action)
+        action = torch.full((num_envs, 4), 0.1, device=cuda_device, requires_grad=True)
+        _, _state, loss, _reward, extras = env.step(action)
 
+        assert not extras["reset"].any()
         assert loss.requires_grad
         loss.sum().backward()
         assert action.grad is not None
