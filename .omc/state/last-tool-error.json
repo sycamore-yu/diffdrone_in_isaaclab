@@ -1,7 +1,7 @@
 {
   "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"source ~/miniconda3/etc/profile.d/conda.sh && conda activate isaaclab-newton && export CUDA_VISIBLE_DEVICES='' && python -c \\\"\\nimport sys\\nsys.path.insert(0, 'diffaero_newton/source')\\n# ...",
-  "error": "Exit code 1\nUnable to bootstrap inner kit kernel: /home/tong/miniconda3/envs/isaaclab-newton/lib/python3.11/site-packages/isaacsim/kit/libcarb.so: cannot allocate memory in static TLS block\n\nUnable to bootstrap inner kit kernel: /home/tong/miniconda3/envs/isaaclab-newton/lib/python3.11/site-packages/isaacsim/kit/libcarb.so: cannot allocate memory in static TLS block",
-  "timestamp": "2026-03-12T08:07:59.908Z",
-  "retry_count": 1
+  "tool_input_preview": "{\"command\":\"git fetch origin main && git merge origin/main --no-edit\"}",
+  "error": "Exit code 1\nFrom https://github.com/sycamore-yu/diffdrone_in_isaaclab\n * branch            main       -> FETCH_HEAD\nAuto-merging .beads/backup/backup_state.json\nCONFLICT (content): Merge conflict in .beads/backup/backup_state.json\nAutomatic merge failed; fix conflicts and then commit the result.\n\nFrom https://github.com/sycamore-yu/diffdrone_in_isaaclab\n * branch            main       -> FETCH_HEAD\nAuto-merging .beads/backup/backup_state.json\nCONFLICT (content): Merge conflict in .beads/backup/b...",
+  "timestamp": "2026-03-17T12:55:09.103Z",
+  "retry_count": 2
 }

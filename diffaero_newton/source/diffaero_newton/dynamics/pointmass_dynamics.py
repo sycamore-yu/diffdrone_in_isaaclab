@@ -319,8 +319,8 @@ class DiscretePointMass(_PointMassBase):
         acc = control_world * inv_mass + self.gravity + drag_force * inv_mass
 
         # Semi-implicit Euler integration
-        next_pos = pos + dt * vel
         next_vel = vel + dt * acc
+        next_pos = pos + dt * next_vel
 
         next_state = self._state_tensor.clone()
         next_state[:, :3] = next_pos
@@ -330,11 +330,11 @@ class DiscretePointMass(_PointMassBase):
         self._state_tensor = next_state
 
     def _quat_to_rotation_matrix(self, quat: torch.Tensor) -> torch.Tensor:
-        """Convert quaternion [x,y,z,w] to rotation matrix."""
-        qw = quat[:, 3]
-        qx = quat[:, 0]
-        qy = quat[:, 1]
-        qz = quat[:, 2]
+        """Convert quaternion [w,x,y,z] to rotation matrix."""
+        qw = quat[:, 0]
+        qx = quat[:, 1]
+        qy = quat[:, 2]
+        qz = quat[:, 3]
         norm = torch.sqrt(qw*qw + qx*qx + qy*qy + qz*qz + 1e-8)
         qw, qx, qy, qz = qw/norm, qx/norm, qy/norm, qz/norm
         R = torch.zeros(quat.shape[0], 3, 3, device=quat.device)
@@ -349,4 +349,16 @@ class DiscretePointMass(_PointMassBase):
         R[:, 2, 2] = (1 - 2*(qx*qx + qy*qy)).reshape(-1)
         return R
 
+# Backward-compatible alias
+PointMass = ContinuousPointMass
 
+
+def create_pointmass(
+    num_envs: int = 1,
+    dt: float = DEFAULT_DT,
+    requires_grad: bool = False,
+    device: str = "cpu",
+) -> PointMass:
+    """Create the backward-compatible continuous point-mass model."""
+    config = PointMassConfig(num_envs=num_envs, dt=dt, requires_grad=requires_grad)
+    return PointMass(config, device=device)
