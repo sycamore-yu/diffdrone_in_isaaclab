@@ -20,7 +20,9 @@ This document serves as the ground truth for the current actual migration status
 
 ### Dynamics
 - [x] **PointMass**: Implemented with explicit `pointmass` (backward-compatible alias), `continuous_pointmass`, and `discrete_pointmass` model options. Low-level differentiable propagation now passes `test_pointmass_dynamics.py`, and both model variants are wired into the unified training entry.
+- [x] **PointMass action_frame**: Added `action_frame` config option ('world'/'local') to `DiscretePointMass`, with quaternion-to-rotation-matrix conversion for local frame transformation.
 - [x] **Quadrotor**: Implemented with Newton + Warp autograd bridge. Low-level action-to-state backprop works on `main`, and obstacle-task differentiable loss tests pass.
+- [x] **Quadrotor control_mode**: Added `control_mode`, `K_angvel`, `torque_ratio`, `thrust_ratio` fields to `DroneConfig` for future rate-controller support.
 - [ ] **DiffAero Quadrotor Semantics**: Not yet matched 1:1. Current mainline quadrotor uses direct normalized motor thrust input and does not yet reproduce DiffAero's rate-controller-oriented semantics or full aerodynamic model details.
 
 ### Tasks/Environments
