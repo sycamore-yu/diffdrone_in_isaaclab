@@ -86,3 +86,11 @@ class PositionControlEnvCfg(DirectRLEnvCfg):
     viewer: object = field(default_factory=lambda: PCViewerCfg())
     events: object = field(default_factory=lambda: None)
     dynamics: object = field(default_factory=lambda: QuadrotorCfg())
+
+
+@configclass
+class Sim2RealPositionControlEnvCfg(PositionControlEnvCfg):
+    """Configuration for the square-wave Sim2Real position control variant."""
+
+    square_size: float = 1.0
+    switch_time: float = 1.0

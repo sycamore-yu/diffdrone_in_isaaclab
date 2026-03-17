@@ -33,7 +33,7 @@ def parse_args():
         "--env",
         type=str,
         default="position_control",
-        help="Environment: position_control, mapc, obstacle_avoidance, racing",
+        help="Environment: position_control, sim2real_position_control, mapc, obstacle_avoidance, racing",
     )
     parser.add_argument(
         "--dynamics",
