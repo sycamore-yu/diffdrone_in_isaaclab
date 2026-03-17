@@ -103,33 +103,40 @@ except BaseException:
             if env_ids_tensor.numel() > 0:
                 self.episode_length_buf[env_ids_tensor] = 0
 
-        def reset(self, seed: int | None = None, options: dict[str, Any] | None = None):
-            """Reset all environments and return the current observations."""
+        def reset(self):
+            """Reset all environments and return observations."""
+            env_ids = list(range(self.num_envs))
+            self._reset_idx(env_ids)
+            if hasattr(self, "_get_observations"):
+                return self._get_observations(), {}
+            return None, {}
 
-            if seed is not None:
-                torch.manual_seed(seed)
-            self._reset_idx(torch.arange(self.num_envs, device=self.device))
-            return self._get_observations(), {}
-
-        def step(self, action: torch.Tensor):
-            """Run one vectorized environment step using the DirectRLEnv hook contract."""
-
-            self._pre_physics_step(action)
-            for _ in range(self.decimation):
+        def step(self, action):
+            """Approximate IsaacLab's DirectRLEnv step contract for tests."""
+            if hasattr(self, "_pre_physics_step"):
+                self._pre_physics_step(action)
+            if hasattr(self, "_apply_action"):
                 self._apply_action()
 
             self.episode_length_buf += 1
-            obs = self._get_observations()
-            reward = self._get_rewards()
-            terminated, truncated = self._get_dones()
+
+            obs = self._get_observations() if hasattr(self, "_get_observations") else None
+            reward = self._get_rewards() if hasattr(self, "_get_rewards") else torch.zeros(self.num_envs, device=self.device)
+            if hasattr(self, "_get_dones"):
+                terminated, truncated = self._get_dones()
+            else:
+                terminated = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+                truncated = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+
             reset_mask = terminated | truncated
             if reset_mask.any():
                 self._reset_idx(reset_mask.nonzero(as_tuple=False).squeeze(-1).tolist())
-                obs = self._get_observations()
+                obs = self._get_observations() if hasattr(self, "_get_observations") else obs
+
             return obs, reward, terminated, truncated, {}
 
         def close(self):
-            """Mirror IsaacLab's close hook."""
+            """Mirror the real environment API."""
 
 
 class _NullApp:

@@ -15,7 +15,7 @@ This document serves as the ground truth for the current actual migration status
 - [x] **PPO / Asymmetric PPO**: Implemented (clipped surrogate with GAE, privilege state critic)
 - [ ] **SHA2C**: Not migrated on main
 - [ ] **MASHAC**: Not migrated on main
-- [ ] **DreamerV3 / world**: Partially present under `training/dreamerv3`, but not wired into `scripts/registry.py` or the unified training entry; treat as not landed capability on `main`
+- [x] **DreamerV3 / world**: Wired into `scripts/registry.py` and the unified training entry as `--algo world`. Current validated path is a state-only world-model rollout on `position_control` with CPU smoke coverage; broader task parity and perception-heavy variants remain incomplete.
 
 ### Dynamics
 - [x] **PointMass**: Implemented with explicit `pointmass` (backward-compatible alias), `continuous_pointmass`, and `discrete_pointmass` model options. Low-level differentiable propagation now passes `test_pointmass_dynamics.py`, and both model variants are wired into the unified training entry.
@@ -43,6 +43,7 @@ This document serves as the ground truth for the current actual migration status
 ## Validation & Commands
 Currently verified on `main`:
 - `conda run -n isaaclab-newton pytest diffaero_newton/tests/test_train_entry.py -q` (Unified training entry / registry smoke)
+- `conda run -n isaaclab-newton pytest diffaero_newton/tests/test_world_training.py -q` (DreamerV3/world env-contract smoke)
 - `conda run -n isaaclab-newton pytest diffaero_newton/tests/test_ppo_training.py -q` (PPO / APPO training checks)
 - `conda run -n isaaclab-newton pytest diffaero_newton/tests/test_position_control.py -q` (Position control environment smoke)
 - `conda run -n isaaclab-newton pytest diffaero_newton/tests/test_sim2real_position_control.py -q` (Sim2Real square-target position control smoke)
