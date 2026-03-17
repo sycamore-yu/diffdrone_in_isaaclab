@@ -1,14 +1,7 @@
 """Tests for the MASHAC multi-agent training path."""
 
-import os
-import sys
-
+import pytest
 import torch
-
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "source")))
-from diffaero_newton.common.isaaclab_launch import launch_app
-
-app = launch_app()
 
 from diffaero_newton.configs.dynamics_cfg import ContinuousPointMassCfg
 from diffaero_newton.configs.mapc_env_cfg import MAPCEnvCfg
@@ -17,32 +10,40 @@ from diffaero_newton.envs.mapc_env import create_env
 from diffaero_newton.training.mashac import MASHAC, MASHACAgent
 
 
+pytestmark = pytest.mark.usefixtures("isaaclab_app")
+
+
 def _make_env(device: str, num_envs: int = 2, n_agents: int = 3):
     cfg = MAPCEnvCfg()
     cfg.num_envs = num_envs
     cfg.n_agents = n_agents
     cfg.scene.num_envs = num_envs
     cfg.__post_init__()
-    cfg.dynamics = ContinuousPointMassCfg(num_envs=num_envs * n_agents, requires_grad=True, dt=cfg.sim.dt)
+    cfg.dynamics = ContinuousPointMassCfg(
+        num_envs=num_envs * n_agents,
+        requires_grad=True,
+        dt=cfg.sim.dt,
+    )
     return create_env(cfg=cfg, device=device)
 
 
-def test_mashac_agent_action_shape():
+def test_mashac_agent_action_shape() -> None:
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    obs_dim = 111
-    state_dim = 30
-    action_dim = 12
-
-    agent = MASHACAgent(obs_dim=obs_dim, state_dim=state_dim, action_dim=action_dim, cfg=TrainingCfg(device=device))
-    obs = torch.randn(4, obs_dim, device=device)
+    agent = MASHACAgent(
+        obs_dim=111,
+        state_dim=30,
+        action_dim=12,
+        cfg=TrainingCfg(device=device),
+    )
+    obs = torch.randn(4, 111, device=device)
     action, log_prob, entropy = agent.get_action(obs)
 
-    assert action.shape == (4, action_dim)
+    assert action.shape == (4, 12)
     assert log_prob.shape == (4, 1)
     assert entropy.shape == (4, 1)
 
 
-def test_mashac_training_iteration():
+def test_mashac_training_iteration() -> None:
     device = "cuda" if torch.cuda.is_available() else "cpu"
     env = _make_env(device=device)
     trainer = MASHAC(
@@ -68,7 +69,6 @@ def test_mashac_training_iteration():
             for name, param in trainer.agent.actor.named_parameters()
         }
         metrics = trainer.agent.update(trainer.buffer)
-
         actor_changed = any(
             not torch.allclose(actor_before[name], param.detach(), atol=1e-8)
             for name, param in trainer.agent.actor.named_parameters()
@@ -85,11 +85,9 @@ def test_mashac_training_iteration():
         }
     finally:
         env.close()
-        if app is not None:
-            app.close()
 
 
-def test_mashac_collect_rollout_returns_detached_observation():
+def test_mashac_collect_rollout_returns_detached_observation() -> None:
     device = "cuda" if torch.cuda.is_available() else "cpu"
     env = _make_env(device=device)
     trainer = MASHAC(
@@ -107,7 +105,6 @@ def test_mashac_collect_rollout_returns_detached_observation():
         obs, _ = env.reset()
         next_obs = trainer._collect_rollout(obs)
         policy_obs = next_obs["policy"] if isinstance(next_obs, dict) else next_obs
-
         assert not policy_obs.requires_grad
 
         next_obs = trainer._collect_rollout(next_obs)

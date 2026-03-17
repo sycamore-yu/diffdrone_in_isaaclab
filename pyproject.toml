@@ -1,0 +1,21 @@
+[tool.pytest.ini_options]
+testpaths = ["diffaero_newton/tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = [
+    ".beads",
+    ".omc",
+    "reference",
+]
+src = [
+    "diffaero_newton/source",
+    "diffaero_newton/tests",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["diffaero_newton"]
