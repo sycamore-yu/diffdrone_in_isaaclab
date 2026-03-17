@@ -171,6 +171,13 @@ class PointMassConfig:
     drag_coeff: float = 0.1
     solver_type: str = "semi_implicit"
     n_substeps: int = 1
+    # Action frame: 'world' or 'local'
+    action_frame: str = "world"
+    # Yaw alignment options
+    align_yaw_with_target_direction: bool = False
+    align_yaw_with_vel_ema: bool = False
+    # Control delay factor
+    control_delay_factor: float = 1.0
 
 
 @dataclass
@@ -288,36 +295,58 @@ class ContinuousPointMass(_PointMassBase):
 
 
 class DiscretePointMass(_PointMassBase):
-    """Torch-native discrete point-mass update used to mirror DiffAero's split model family."""
+    """Torch-native discrete point-mass update with local/world frame support."""
 
     def integrate(self, dt: Optional[float] = None):
         dt = float(dt or self.config.dt)
         pos = self._state_tensor[:, :3]
         vel = self._state_tensor[:, 7:10]
+        quat = self._state_tensor[:, 3:7]
         inv_mass = 1.0 / float(self.config.mass)
 
-        acc = self._control_tensor * inv_mass + self.gravity - self.config.drag_coeff * inv_mass * vel
-        next_pos = pos + dt * (vel + 0.5 * acc * dt)
+        # Transform control to world frame if using local frame
+        action_frame = getattr(self.config, 'action_frame', 'world')
+        if action_frame == "local":
+            R = self._quat_to_rotation_matrix(quat)
+            control_world = torch.bmm(R, self._control_tensor.unsqueeze(-1)).squeeze(-1)
+        else:
+            control_world = self._control_tensor
+
+        # Apply drag
+        drag_force = -self.config.drag_coeff * vel
+
+        # Compute acceleration
+        acc = control_world * inv_mass + self.gravity + drag_force * inv_mass
+
+        # Semi-implicit Euler integration
+        next_pos = pos + dt * vel
         next_vel = vel + dt * acc
 
         next_state = self._state_tensor.clone()
         next_state[:, :3] = next_pos
-        next_state[:, 3:7] = torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device)
+        next_state[:, 3:7] = quat
         next_state[:, 7:10] = next_vel
         next_state[:, 10:13] = 0.0
         self._state_tensor = next_state
 
+    def _quat_to_rotation_matrix(self, quat: torch.Tensor) -> torch.Tensor:
+        """Convert quaternion [x,y,z,w] to rotation matrix."""
+        qw = quat[:, 3]
+        qx = quat[:, 0]
+        qy = quat[:, 1]
+        qz = quat[:, 2]
+        norm = torch.sqrt(qw*qw + qx*qx + qy*qy + qz*qz + 1e-8)
+        qw, qx, qy, qz = qw/norm, qx/norm, qy/norm, qz/norm
+        R = torch.zeros(quat.shape[0], 3, 3, device=quat.device)
+        R[:, 0, 0] = (1 - 2*(qy*qy + qz*qz)).reshape(-1)
+        R[:, 0, 1] = (2*(qx*qy - qw*qz)).reshape(-1)
+        R[:, 0, 2] = (2*(qx*qz + qw*qy)).reshape(-1)
+        R[:, 1, 0] = (2*(qx*qy + qw*qz)).reshape(-1)
+        R[:, 1, 1] = (1 - 2*(qx*qx + qz*qz)).reshape(-1)
+        R[:, 1, 2] = (2*(qy*qz - qw*qx)).reshape(-1)
+        R[:, 2, 0] = (2*(qx*qz - qw*qy)).reshape(-1)
+        R[:, 2, 1] = (2*(qy*qz + qw*qx)).reshape(-1)
+        R[:, 2, 2] = (1 - 2*(qx*qx + qy*qy)).reshape(-1)
+        return R
 
-PointMass = ContinuousPointMass
 
-
-def create_pointmass(
-    num_envs: int = 1,
-    dt: float = DEFAULT_DT,
-    requires_grad: bool = False,
-    device: str = "cpu",
-) -> PointMass:
-    """Create the backward-compatible continuous point-mass model."""
-
-    config = PointMassConfig(num_envs=num_envs, dt=dt, requires_grad=requires_grad)
-    return PointMass(config, device=device)

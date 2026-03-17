@@ -157,11 +157,10 @@ class _NewtonStepFn(torch.autograd.Function):
 
         return None, grad_state, grad_controls, None
 
-
 @dataclass
 class DroneConfig:
     """Configuration for the drone dynamics."""
-
+    
     num_envs: int = 1
     dt: float = DEFAULT_DT
     requires_grad: bool = False
@@ -170,6 +169,12 @@ class DroneConfig:
     inertia: tuple[float, float, float] = (IXX, IYY, IZZ)
     solver_type: str = "semi_implicit"
     n_substeps: int = 1
+    # Control mode: "motor_thrust" (default) or "rate_controller"
+    control_mode: str = "motor_thrust"
+    # Rate controller gains
+    K_angvel: tuple[float, float, float] = (1.0, 1.0, 0.5)
+    torque_ratio: float = 1.0
+    thrust_ratio: float = 1.0
 
 
 class Drone:
