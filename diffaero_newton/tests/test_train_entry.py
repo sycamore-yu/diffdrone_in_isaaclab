@@ -70,6 +70,9 @@ def test_fallback_direct_rl_env_honors_decimation():
             self.apply_calls = 0
             super().__init__(DummyCfg(), device="cpu")
 
+        def _pre_physics_step(self, action):
+            self.last_action = action
+
         def _get_observations(self):
             return torch.zeros(self.num_envs, 1, device=self.device)
 
