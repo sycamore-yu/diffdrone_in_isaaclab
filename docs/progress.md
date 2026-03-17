@@ -27,7 +27,7 @@ This document serves as the ground truth for the current actual migration status
 - [x] **Multi-Agent Position Control**: Implemented (Multi-agent with collision rewards and proper shape flattening)
 - [x] **Obstacle Avoidance**: Implemented (ObstacleAvoidanceEnv with multi-modal sensor integration)
 - [x] **Racing**: Implemented (figure-8 gate track with gate passing detection)
-- [ ] **Sim2RealPositionControl**: Not migrated on main
+- [x] **Sim2RealPositionControl**: Implemented as `sim2real_position_control` with square-target switching derived from DiffAero's reference environment; validated on the unified entry with point-mass dynamics.
 
 ### Sensors
 - [x] **Relative Position (relpos)**: Implemented (sorted nearest-obstacle relative positions)
