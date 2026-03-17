@@ -1,6 +1,7 @@
 """Actor-Critic agent for DreamerV3."""
 
 import copy
+import math
 from dataclasses import dataclass
 from typing import Optional
 
@@ -64,7 +65,7 @@ class ContDist:
 def percentile(x: torch.Tensor, percentage: float) -> torch.Tensor:
     """Compute percentile of tensor."""
     flat_x = torch.flatten(x)
-    kth = int(percentage * len(flat_x))
+    kth = max(1, min(len(flat_x), math.ceil(percentage * len(flat_x))))
     per = torch.kthvalue(flat_x, kth).values
     return per
 
@@ -127,6 +128,7 @@ class ActorCriticAgent(nn.Module):
         self.max_action: torch.Tensor
 
         self.device = cfg.device
+        self.autocast_device_type = "cuda" if self.device.type == "cuda" else "cpu"
         feat_dim = cfg.feat_dim
         hidden_dim = cfg.hidden_dim
         num_layers = cfg.num_layers
@@ -195,7 +197,11 @@ class ActorCriticAgent(nn.Module):
     def sample(self, latent: torch.Tensor, greedy: bool = False):
         """Sample action from policy."""
         self.eval()
-        with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=self.use_amp):
+        with torch.autocast(
+            device_type=self.autocast_device_type,
+            dtype=torch.bfloat16,
+            enabled=self.use_amp and self.autocast_device_type == "cuda",
+        ):
             mean, std = self.policy(latent)
             dist = self.dist(mean, std)
             if greedy:
@@ -220,7 +226,11 @@ class ActorCriticAgent(nn.Module):
     ):
         """Update policy and value model."""
         self.train()
-        with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=self.use_amp):
+        with torch.autocast(
+            device_type=self.autocast_device_type,
+            dtype=torch.bfloat16,
+            enabled=self.use_amp and self.autocast_device_type == "cuda",
+        ):
             dist, raw_value = self.get_dist_raw_value(latent)
             log_prob = dist.log_prob(action)
             log_prob = log_prob.sum(-1)

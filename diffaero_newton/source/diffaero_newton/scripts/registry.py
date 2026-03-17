@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import torch
+
 from diffaero_newton.common.constants import ACTION_DIM
 
 
@@ -45,6 +47,16 @@ def build_algo(name: str, obs_dim: int, action_dim: int = ACTION_DIM, device: st
         cfg = kwargs.pop("cfg", None) or TrainingCfg(device=device)
         return SHACAgent(obs_dim=obs_dim, action_dim=action_dim, cfg=cfg)
 
+    if name in ("world", "dreamerv3"):
+        from diffaero_newton.training.dreamerv3 import World_Agent
+
+        env = kwargs.pop("env", None)
+        if env is None:
+            raise ValueError("DreamerV3/world requires an environment instance.")
+        cfg = kwargs.pop("cfg", None) or {}
+        world_device = env.device if hasattr(env, "device") else device
+        return World_Agent(cfg=cfg, env=env, device=torch.device(world_device))
+
     raise ValueError(f"Unknown algorithm: {name}. Available: {', '.join(sorted(ALGO_REGISTRY))}")
 
 
@@ -54,6 +66,7 @@ ALGO_REGISTRY = {
     "ppo": "diffaero_newton.training.ppo.PPO",
     "appo": "diffaero_newton.training.ppo.AsymmetricPPO",
     "shac": "diffaero_newton.training.shac.SHAC",
+    "world": "diffaero_newton.training.dreamerv3.World_Agent",
 }
 
 ENV_REGISTRY = {

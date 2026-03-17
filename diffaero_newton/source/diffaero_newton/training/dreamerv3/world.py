@@ -90,6 +90,7 @@ def train_worldmodel(
     use_amp = training_cfg.get("use_amp", False)
     dtype = torch.float16 if use_amp else torch.float32
     update_freq = training_cfg.get("worldmodel_update_freq", 1)
+    device_type = "cuda" if device.type == "cuda" else "cpu"
 
     # Initialize accumulators for logging
     total_loss_sum = None
@@ -99,7 +100,7 @@ def train_worldmodel(
     rew_loss_sum = None
     end_loss_sum = None
 
-    with torch.autocast(device_type="cuda", dtype=dtype, enabled=use_amp):
+    with torch.autocast(device_type=device_type, dtype=dtype, enabled=use_amp and device_type == "cuda"):
         for _ in range(update_freq):
             sample_state, sample_action, sample_reward, sample_termination, sample_perception = (
                 replaybuffer.sample(training_cfg.batch_size, training_cfg.batch_length)
@@ -193,8 +194,10 @@ class World_Agent:
             self.n_envs = 1
 
         # Determine state dimension
-        if hasattr(env, "cfg") and hasattr(env.cfg, "num_states"):
+        if hasattr(env, "cfg") and hasattr(env.cfg, "num_states") and env.cfg.num_states:
             state_dim = env.cfg.num_states
+        elif hasattr(env, "drone"):
+            state_dim = env.drone.get_flat_state().view(self.n_envs, -1).shape[-1]
         else:
             state_dim = 13  # Default for drone
 
@@ -271,6 +274,7 @@ class World_Agent:
             num_envs=self.n_envs,
             max_length=rb_cfg.get("max_length", 100000),
             warmup_length=rb_cfg.get("warmup_length", 5000),
+            min_ready_steps=rb_cfg.get("min_ready_steps", 64),
             store_on_gpu=rb_cfg.get("store_on_gpu", True),
             device=str(self.device),
             use_perception=sm_cfg.get("use_perception", False),
@@ -297,17 +301,62 @@ class World_Agent:
             }
         )
 
-    @torch.no_grad()
-    def act(self, obs, test: bool = False):
-        """Act in environment (for inference)."""
-        if not isinstance(obs, torch.Tensor):
+    def _extract_state_and_perception(self, obs) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        """Normalize environment outputs into the world-model state contract."""
+        if isinstance(obs, torch.Tensor):
+            state = obs
+            perception = None
+        else:
             state = obs.get("state", obs.get("observation"))
+            if state is None and hasattr(self.env, "drone"):
+                state = self.env.drone.get_flat_state()
+            if state is None:
+                raise KeyError("DreamerV3 world path requires tensor state or obs['state']/obs['observation'].")
             perception = obs.get("perception")
             if perception is not None:
                 perception = perception.unsqueeze(1)
+
+        if state.ndim > 2:
+            state = state.view(state.shape[0], -1)
+        return state.to(self.device), perception
+
+    def _unpack_env_step(
+        self,
+        step_out,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Dict[str, Any]]:
+        """Handle both mainline env returns and gym-style five-tuples."""
+        if not isinstance(step_out, tuple) or len(step_out) != 5:
+            raise RuntimeError("DreamerV3 world path expected env.step() to return a 5-tuple.")
+
+        first, second, third, fourth, fifth = step_out
+        if isinstance(fifth, dict) and "terminated" in fifth and "truncated" in fifth:
+            next_obs = first
+            next_state = second
+            reward = fourth
+            extras = fifth
+            terminated = extras.get("terminated")
+            truncated = extras.get("truncated")
+            if terminated is None or truncated is None:
+                raise KeyError("Environment extras must include 'terminated' and 'truncated' for DreamerV3.")
         else:
-            state = obs
-            perception = None
+            next_obs = first
+            reward = second
+            terminated = third
+            truncated = fourth
+            extras = fifth if isinstance(fifth, dict) else {}
+            next_state, _ = self._extract_state_and_perception(next_obs)
+
+        done = (terminated | truncated).to(torch.float32)
+        if next_state.ndim > 2:
+            next_state = next_state.view(next_state.shape[0], -1)
+        extras.setdefault("terminated", terminated)
+        extras.setdefault("truncated", truncated)
+        return next_obs, next_state.to(self.device), reward.to(self.device), done, extras
+
+    @torch.no_grad()
+    def act(self, obs, test: bool = False):
+        """Act in environment (for inference)."""
+        state, perception = self._extract_state_and_perception(obs)
 
         if self.cfg.get("use_symlog", True):
             state = symlog(state)
@@ -333,14 +382,7 @@ class World_Agent:
         policy_info = {}
 
         with torch.no_grad():
-            if not isinstance(obs, torch.Tensor):
-                state = obs.get("state", obs.get("observation"))
-                perception = obs.get("perception")
-                if perception is not None:
-                    perception = perception.unsqueeze(1)
-            else:
-                state = obs
-                perception = None
+            state, perception = self._extract_state_and_perception(obs)
 
             if self.cfg.get("use_symlog", True):
                 state = symlog(state)
@@ -356,16 +398,16 @@ class World_Agent:
                 action = torch.randn(self.n_envs, self.statemodel_cfg.action_dim, device=state.device)
 
             # Step environment
-            next_obs, reward, terminated, truncated, env_info = self.env.step(action)
+            next_obs, next_state, reward, done, env_info = self._unpack_env_step(self.env.step(action))
             reward = reward * 10.0
 
             # Store in replay buffer
-            self.replaybuffer.append(state, action, reward, terminated, perception)
+            self.replaybuffer.append(state, action, reward, done, perception)
 
             # Reset hidden state for terminated episodes
-            if terminated.any():
+            if done.bool().any():
                 zeros = torch.zeros_like(self.hidden)
-                self.hidden = torch.where(terminated.unsqueeze(-1), zeros, self.hidden)
+                self.hidden = torch.where(done.bool().unsqueeze(-1), zeros, self.hidden)
 
         # Train world model and agent if ready
         if self.replaybuffer.ready():
@@ -385,7 +427,7 @@ class World_Agent:
 
         self.num_steps += 1
 
-        return next_obs, policy_info, env_info, reward.mean().item(), (terminated | truncated).float().mean().item()
+        return next_state, policy_info, env_info, reward.mean().item(), done.mean().item()
 
     def finetune(self) -> Dict[str, float]:
         """Fine-tune agent on world model (for adaptation)."""

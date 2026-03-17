@@ -5,6 +5,14 @@ from typing import Tuple
 
 from gymnasium.spaces import Box
 
+from diffaero_newton.common.isaaclab_compat import (
+    DirectRLEnvCfg,
+    FeatherstoneSolverCfg,
+    InteractiveSceneCfg,
+    NewtonCfg,
+    SimulationCfg,
+    configclass,
+)
 from diffaero_newton.common.constants import (
     DEFAULT_DT,
     ACTION_DIM,
@@ -51,9 +59,7 @@ class PositionControlEnvCfg(DirectRLEnvCfg):
     num_observations: int = 16  # state(13) + goal(3)
     num_states: int = 0
     
-    scene: InteractiveSceneCfg = field(
-        default_factory=lambda: InteractiveSceneCfg(num_envs=256, env_spacing=2.5)
-    )
+    scene: InteractiveSceneCfg = field(default_factory=lambda: InteractiveSceneCfg(num_envs=256, env_spacing=2.5))
 
     observation_space: Box = field(default_factory=lambda: Box(low=-np.inf, high=np.inf, shape=(16,)))
     action_space: Box = field(default_factory=lambda: Box(low=0.0, high=1.0, shape=(ACTION_DIM,)))
