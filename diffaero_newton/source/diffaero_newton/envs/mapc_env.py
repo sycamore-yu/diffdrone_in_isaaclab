@@ -4,8 +4,9 @@ import math
 import torch
 import numpy as np
 
-from isaaclab.envs import DirectRLEnv
+from diffaero_newton.common.isaaclab_compat import DirectRLEnv
 from diffaero_newton.configs.mapc_env_cfg import MAPCEnvCfg
+from diffaero_newton.configs.dynamics_cfg import is_pointmass_model_type
 from diffaero_newton.dynamics.registry import create_dynamics
 from diffaero_newton.common.constants import ACTION_DIM
 
@@ -174,7 +175,7 @@ class MAPCEnv(DirectRLEnv):
     def _reset_idx(self, env_ids: Sequence[int]):
         super()._reset_idx(env_ids)
         if len(env_ids) > 0:
-            env_ids_tensor = torch.tensor(env_ids, dtype=torch.long, device=self.device)
+            env_ids_tensor = torch.as_tensor(env_ids, dtype=torch.long, device=self.device)
             n_resets = len(env_ids)
             
             # Init formation and target
@@ -207,7 +208,7 @@ class MAPCEnv(DirectRLEnv):
             random_idx = random_idx[:, :self.n_agents].unsqueeze(-1).expand(-1, -1, 3)
             p_new = xyz.gather(dim=1, index=random_idx)
             
-            if self.cfg.dynamics.model_type == "pointmass":
+            if is_pointmass_model_type(self.cfg.dynamics.model_type):
                  p_new[:, :, 2] = torch.clamp(p_new[:, :, 2], min=1.0) # Height
                  
             # Note: We need to reset the states flattened to num_envs * n_agents

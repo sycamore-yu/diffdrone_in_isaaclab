@@ -18,6 +18,14 @@ from diffaero_newton.common.constants import (
     ACTION_DIM,
     MAX_EPISODE_LENGTH_S,
 )
+from diffaero_newton.common.isaaclab_compat import (
+    DirectRLEnvCfg,
+    FeatherstoneSolverCfg,
+    InteractiveSceneCfg,
+    NewtonCfg,
+    SimulationCfg,
+    configclass,
+)
 from diffaero_newton.configs.dynamics_cfg import QuadrotorCfg
 
 @dataclass

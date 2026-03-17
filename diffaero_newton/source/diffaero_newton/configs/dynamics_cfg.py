@@ -2,6 +2,15 @@ import torch
 from dataclasses import dataclass
 from diffaero_newton.common.constants import DEFAULT_DT
 
+
+POINTMASS_MODEL_TYPES = ("pointmass", "continuous_pointmass", "discrete_pointmass")
+
+
+def is_pointmass_model_type(model_type: str) -> bool:
+    """Return whether a model type uses the point-mass interface."""
+
+    return model_type in POINTMASS_MODEL_TYPES
+
 @dataclass
 class DynamicsCfg:
     """Base config for dynamics."""
@@ -24,10 +33,31 @@ class QuadrotorCfg(DynamicsCfg):
 
 @dataclass
 class PointMassCfg(DynamicsCfg):
-    """Config for PointMass dynamics."""
+    """Backward-compatible alias for the continuous point-mass model."""
     model_type: str = "pointmass"
     mass: float = 1.0
     drag_coeff: float = 0.1
     solver_type: str = "semi_implicit"
     n_substeps: int = 1
 
+
+@dataclass
+class ContinuousPointMassCfg(DynamicsCfg):
+    """Config for continuous point-mass dynamics."""
+
+    model_type: str = "continuous_pointmass"
+    mass: float = 1.0
+    drag_coeff: float = 0.1
+    solver_type: str = "semi_implicit"
+    n_substeps: int = 1
+
+
+@dataclass
+class DiscretePointMassCfg(DynamicsCfg):
+    """Config for discrete point-mass dynamics."""
+
+    model_type: str = "discrete_pointmass"
+    mass: float = 1.0
+    drag_coeff: float = 0.1
+    solver_type: str = "semi_implicit"
+    n_substeps: int = 1
