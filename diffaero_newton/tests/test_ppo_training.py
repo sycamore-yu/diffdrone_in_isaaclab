@@ -8,7 +8,7 @@ Validates:
 
 import sys, os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "source")))
-from diffaero_newton.common.isaaclab_compat import launch_app
+from diffaero_newton.common.isaaclab_launch import launch_app
 app = launch_app()
 
 import torch

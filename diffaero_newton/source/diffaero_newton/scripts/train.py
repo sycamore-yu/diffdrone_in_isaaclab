@@ -250,7 +250,7 @@ def main():
         list_available()
         return
 
-    from diffaero_newton.common.isaaclab_compat import launch_app
+    from diffaero_newton.common.isaaclab_launch import launch_app
 
     app = launch_app()
     env = None

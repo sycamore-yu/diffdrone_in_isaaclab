@@ -46,18 +46,18 @@ def test_train_list_runs_without_pythonpath_hack():
     assert "sim2real_position_control" in result.stdout
 
 
-def test_isaaclab_compat_exports_launch_app():
+def test_isaaclab_launch_exports_launch_app():
     sys.path.insert(0, str(REPO_ROOT / "diffaero_newton/source"))
 
-    from diffaero_newton.common.isaaclab_compat import launch_app
+    from diffaero_newton.common.isaaclab_launch import launch_app
 
     assert callable(launch_app)
 
 
-def test_fallback_direct_rl_env_honors_decimation():
+def test_direct_rl_shim_honors_decimation():
     sys.path.insert(0, str(REPO_ROOT / "diffaero_newton/source"))
 
-    from diffaero_newton.common.isaaclab_compat import DirectRLEnv, SimulationCfg
+    from diffaero_newton.common.direct_rl_shim import DirectRLEnv, SimulationCfg
 
     class DummyCfg:
         num_envs = 2

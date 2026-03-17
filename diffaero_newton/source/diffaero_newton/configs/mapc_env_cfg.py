@@ -10,7 +10,7 @@ from diffaero_newton.common.constants import (
     ACTION_DIM,
     MAX_EPISODE_LENGTH_S,
 )
-from diffaero_newton.common.isaaclab_compat import (
+from diffaero_newton.common.direct_rl_shim import (
     DirectRLEnvCfg,
     FeatherstoneSolverCfg,
     InteractiveSceneCfg,

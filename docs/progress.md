@@ -6,6 +6,7 @@ This document serves as the ground truth for the current actual migration status
 - **Target Setup**: `isaaclab-newton` conda environment.
 - **Goal**: Migrate DiffAero capabilities (Dynamics, Algorithms, Environments, Sensors) to Newton + IsaacLab.
 - **Mainline Reality**: The unified training entry on `main` is usable for `apg`, `apg_sto`, `ppo`, `appo`, and `shac`, but DiffAero parity is still incomplete in dynamics semantics, world-model integration, and tooling.
+- **Runtime Note**: Mainline now separates real IsaacLab launch (`common/isaaclab_launch.py`) from the project's Newton-only DirectRL shim (`common/direct_rl_shim.py`). The old broad runtime fallback in `isaaclab_compat.py` has been reduced to a legacy import bridge.
 
 ## Capability Matrix Status Tracker
 
@@ -36,8 +37,8 @@ This document serves as the ground truth for the current actual migration status
 
 ## Gaps Relative to Reference DiffAero
 - Missing algorithms on main: `SHA2C`.
-- Missing dynamics parity: split continuous/discrete point-mass models, full DiffAero-like quadrotor control semantics, and clearer frame/control abstractions from `reference/diffaero/dynamics`.
-- Missing environment parity: `Sim2RealPositionControl`.
+- Missing dynamics parity: full DiffAero-like quadrotor control semantics and clearer frame/control abstractions from `reference/diffaero/dynamics`.
+- Missing environment parity: no major task gap remains for the current DiffAero migration slice, but richer sim-to-real/deployment workflows are still absent.
 - Missing world-model parity: perception-enabled DreamerV3 variants, richer task coverage beyond the current `position_control` smoke path, and any Hydra-style experiment workflow around it.
 - Missing tooling parity: Hydra-based train/test/export workflow, sweep tooling, Optuna / WandB integration, and export/deploy utilities.
 

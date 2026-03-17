@@ -28,6 +28,15 @@ The most important source patterns are:
   - `reference/diffaero/env/obstacle_avoidance.py`
   - `reference/diffaero/algo/SHAC.py`
 
+## Runtime Boundary
+
+Treat IsaacLab runtime launch and the project's Newton-only env shim as separate concerns.
+
+- Use the real IsaacLab `AppLauncher` path for runtime launch.
+- Keep the project's lightweight `DirectRLEnv`-style shim explicit and local to the code paths that need a Newton-only headless RL contract.
+- Do not add broad silent fallback layers that hide IsaacLab import or runtime failures.
+- When environment/runtime behavior is unclear, query official IsaacLab documentation first and compare against local `reference/IsaacLab` and `reference/newton` before adding compatibility code.
+
 ## Target Architecture
 
 The project should stay split into four layers.

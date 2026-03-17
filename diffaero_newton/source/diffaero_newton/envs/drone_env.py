@@ -8,7 +8,7 @@ import math
 import torch
 
 from diffaero_newton.common.constants import ACTION_DIM
-from diffaero_newton.common.isaaclab_compat import DirectRLEnv
+from diffaero_newton.common.direct_rl_shim import DirectRLEnv
 from diffaero_newton.configs.drone_env_cfg import DroneEnvCfg
 from diffaero_newton.configs.obstacle_task_cfg import ObstacleTaskCfg
 from diffaero_newton.dynamics.registry import create_dynamics

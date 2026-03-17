@@ -4,7 +4,7 @@ import math
 import torch
 import numpy as np
 
-from diffaero_newton.common.isaaclab_compat import DirectRLEnv
+from diffaero_newton.common.direct_rl_shim import DirectRLEnv
 from diffaero_newton.configs.mapc_env_cfg import MAPCEnvCfg
 from diffaero_newton.configs.dynamics_cfg import is_pointmass_model_type
 from diffaero_newton.dynamics.registry import create_dynamics
