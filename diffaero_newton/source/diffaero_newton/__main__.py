@@ -45,30 +45,31 @@ def main():
     """Main training loop."""
     args = parse_args()
 
-    # Launch IsaacLab through the shared runtime helper used by other entrypoints.
     simulation_app = launch_app(args=args)
 
-    # Import envs and configs AFTER app launcher to avoid Kit errors
     import torch
     from diffaero_newton.envs.drone_env import DroneEnv
     from diffaero_newton.configs.drone_env_cfg import DroneEnvCfg
     from diffaero_newton.configs.training_cfg import TrainingCfg
     from diffaero_newton.training.shac import SHAC
 
+    requested_device = args.device if torch.cuda.is_available() else "cpu"
+    env = None
+
     print("=" * 50)
     print("DiffAero Newton Training")
     print("=" * 50)
-    print(f"Device: {args.device}")
+    print(f"Device: {requested_device}")
     print(f"Num envs: {args.num_envs}")
     print(f"Iterations: {args.num_iterations}")
     print()
 
-    # Create environment config
     env_cfg = DroneEnvCfg()
     env_cfg.num_envs = args.num_envs
+    env_cfg.scene.num_envs = args.num_envs
     env_cfg.episode_length_s = args.episode_length_s
+    env_cfg.device = requested_device
 
-    # Create training config
     training_cfg = TrainingCfg()
     training_cfg.num_iterations = args.num_iterations
     training_cfg.rollout_horizon = args.rollout_horizon
@@ -79,32 +80,31 @@ def main():
     training_cfg.save_dir = args.save_dir
     training_cfg.log_dir = args.log_dir
     training_cfg.enable_tensorboard = not args.no_tensorboard
-    training_cfg.device = args.device
+    training_cfg.device = requested_device
 
-    # Create environment
     print("Creating environment...")
-    env = DroneEnv(cfg=env_cfg)
-    print(f"Environment created: {env.num_envs} parallel environments")
-    print()
-
-    # Create SHAC trainer
-    print("Initializing SHAC agent...")
-    trainer = SHAC(env, cfg=training_cfg)
-    print("SHAC agent initialized")
-    print()
-
-    # Run training
-    print("Starting training...")
-    print("=" * 50)
-
     try:
+        env = DroneEnv(cfg=env_cfg, device=requested_device)
+        print(f"Environment created: {env.num_envs} parallel environments")
+        print()
+
+        print("Initializing SHAC agent...")
+        trainer = SHAC(env, cfg=training_cfg)
+        print("SHAC agent initialized")
+        print()
+
+        print("Starting training...")
+        print("=" * 50)
         trainer.train()
     except KeyboardInterrupt:
         print("\nTraining interrupted by user")
+    finally:
+        if env is not None and hasattr(env, "close"):
+            env.close()
+        if simulation_app is not None:
+            simulation_app.close()
 
     print("Training complete!")
-    if simulation_app is not None:
-        simulation_app.close()
 
 
 if __name__ == "__main__":

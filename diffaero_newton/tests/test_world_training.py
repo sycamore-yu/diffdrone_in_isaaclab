@@ -8,7 +8,7 @@ import torch
 from diffaero_newton.scripts.registry import build_algo, build_env, get_env_state
 
 
-def _run_world_agent_steps_position_control_env(device: str) -> None:
+def _run_world_agent_steps_position_control_env(device: str, expect_update: bool = False) -> None:
     env = build_env(
         name="position_control",
         dynamics="pointmass",
@@ -36,19 +36,24 @@ def _run_world_agent_steps_position_control_env(device: str) -> None:
                 },
                 "replaybuffer": {
                     "max_length": 128,
-                    "warmup_length": 1_000,
-                    "min_ready_steps": 8,
+                    "warmup_length": 1 if expect_update else 1_000,
+                    "min_ready_steps": 2 if expect_update else 8,
                     "store_on_gpu": device.startswith("cuda"),
                 },
                 "world_state_env": {
                     "batch_size": 2,
-                    "batch_length": 4,
-                    "imagine_length": 4,
+                    "batch_length": 2 if expect_update else 4,
+                    "imagine_length": 2 if expect_update else 4,
                 },
             },
         )
 
-        next_state, policy_info, env_info, reward_mean, done_mean = agent.step(state)
+        update_info = {}
+        for _ in range(4 if expect_update else 1):
+            next_state, policy_info, env_info, reward_mean, done_mean = agent.step(state)
+            state = next_state
+            if policy_info:
+                update_info = policy_info
 
         assert next_state.shape == state.shape
         assert next_state.device.type == torch.device(device).type
@@ -58,6 +63,8 @@ def _run_world_agent_steps_position_control_env(device: str) -> None:
         assert isinstance(reward_mean, float)
         assert isinstance(done_mean, float)
         assert torch.isfinite(next_state).all()
+        if expect_update:
+            assert "WorldModel/state_total_loss" in update_info
     finally:
         env.close()
 
@@ -72,6 +79,18 @@ def test_world_agent_steps_position_control_env_gpu():
     if not torch.cuda.is_available():
         pytest.skip("CUDA is required for gpu_smoke world coverage")
     _run_world_agent_steps_position_control_env(device="cuda")
+
+
+@pytest.mark.cpu_smoke
+def test_world_agent_updates_when_replay_is_ready_cpu():
+    _run_world_agent_steps_position_control_env(device="cpu", expect_update=True)
+
+
+@pytest.mark.gpu_smoke
+def test_world_agent_updates_when_replay_is_ready_gpu():
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA is required for gpu_smoke world coverage")
+    _run_world_agent_steps_position_control_env(device="cuda", expect_update=True)
 
 
 @pytest.mark.cpu_smoke

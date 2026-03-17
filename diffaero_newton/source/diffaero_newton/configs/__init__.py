@@ -8,6 +8,7 @@ __all__ = [
     "drone_env_cfg",
     "dynamics_cfg",
     "mapc_env_cfg",
+    "obstacle_env_cfg",
     "obstacle_task_cfg",
     "position_control_env_cfg",
     "racing_env_cfg",

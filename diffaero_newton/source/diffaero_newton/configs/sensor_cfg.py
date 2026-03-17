@@ -1,6 +1,9 @@
 """Sensor configuration for obstacle avoidance observation modes."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass
+from typing import Tuple
 
 
 @dataclass
@@ -36,3 +39,35 @@ class RelposSensorCfg(SensorCfg):
     n_obstacles: int = 10
     ceiling: bool = False
     walls: bool = False
+
+
+def sensor_observation_shape(cfg: SensorCfg) -> Tuple[int, ...]:
+    """Return the flattened observation shape emitted by a sensor config."""
+
+    if isinstance(cfg, CameraSensorCfg):
+        return (cfg.height * cfg.width,)
+    if isinstance(cfg, LidarSensorCfg):
+        return (cfg.n_rays_vertical * cfg.n_rays_horizontal,)
+    if isinstance(cfg, RelposSensorCfg):
+        rows = cfg.n_obstacles + int(cfg.ceiling) + 4 * int(cfg.walls)
+        return (rows * 3,)
+    raise TypeError(f"Unsupported sensor config type: {type(cfg).__name__}")
+
+
+def sensor_observation_dim(cfg: SensorCfg) -> int:
+    """Return the flattened observation dimension emitted by a sensor config."""
+
+    return sensor_observation_shape(cfg)[0]
+
+
+def build_sensor_cfg(name: str, num_obstacles: int) -> SensorCfg:
+    """Build a supported sensor config by CLI/registry name."""
+
+    name = name.lower()
+    if name == "camera":
+        return CameraSensorCfg()
+    if name == "lidar":
+        return LidarSensorCfg()
+    if name == "relpos":
+        return RelposSensorCfg(n_obstacles=num_obstacles)
+    raise ValueError(f"Unknown sensor: {name}. Available: camera, lidar, relpos")

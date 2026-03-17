@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import types
 from pathlib import Path
 
 import torch
@@ -56,6 +57,77 @@ def test_isaaclab_launch_exports_launch_app():
     from diffaero_newton.common.isaaclab_launch import launch_app
 
     assert callable(launch_app)
+
+
+@pytest.mark.runtime_preflight
+def test_package_main_uses_same_device_for_env_and_trainer(monkeypatch):
+    sys.path.insert(0, str(REPO_ROOT / "diffaero_newton/source"))
+
+    import diffaero_newton.__main__ as package_main
+    from diffaero_newton.configs.drone_env_cfg import DroneEnvCfg
+    from diffaero_newton.configs.training_cfg import TrainingCfg
+
+    captured: dict[str, object] = {}
+
+    class FakeApp:
+        def close(self):
+            captured["app_closed"] = True
+
+    class FakeEnv:
+        def __init__(self, cfg, device=None):
+            captured["env_device"] = device
+            captured["env_cfg_device"] = cfg.device
+            self.num_envs = cfg.num_envs
+
+        def close(self):
+            captured["env_closed"] = True
+
+    class FakeSHAC:
+        def __init__(self, env, cfg):
+            captured["trainer_device"] = cfg.device
+            self.env = env
+
+        def train(self):
+            captured["trained"] = True
+
+    fake_env_module = types.ModuleType("diffaero_newton.envs.drone_env")
+    fake_env_module.DroneEnv = FakeEnv
+    fake_cfg_module = types.ModuleType("diffaero_newton.configs.drone_env_cfg")
+    fake_cfg_module.DroneEnvCfg = DroneEnvCfg
+    fake_train_cfg_module = types.ModuleType("diffaero_newton.configs.training_cfg")
+    fake_train_cfg_module.TrainingCfg = TrainingCfg
+    fake_shac_module = types.ModuleType("diffaero_newton.training.shac")
+    fake_shac_module.SHAC = FakeSHAC
+
+    monkeypatch.setitem(sys.modules, "diffaero_newton.envs.drone_env", fake_env_module)
+    monkeypatch.setitem(sys.modules, "diffaero_newton.configs.drone_env_cfg", fake_cfg_module)
+    monkeypatch.setitem(sys.modules, "diffaero_newton.configs.training_cfg", fake_train_cfg_module)
+    monkeypatch.setitem(sys.modules, "diffaero_newton.training.shac", fake_shac_module)
+    monkeypatch.setattr(package_main, "launch_app", lambda args=None: FakeApp())
+    monkeypatch.setattr(package_main, "parse_args", lambda: types.SimpleNamespace(
+        num_envs=4,
+        episode_length_s=5.0,
+        num_iterations=1,
+        rollout_horizon=2,
+        actor_lr=3e-4,
+        critic_lr=1e-3,
+        log_interval=1,
+        save_interval=10,
+        save_dir="checkpoints",
+        log_dir="runs/test",
+        no_tensorboard=True,
+        device="cuda",
+    ))
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+
+    package_main.main()
+
+    assert captured["env_device"] == "cpu"
+    assert captured["env_cfg_device"] == "cpu"
+    assert captured["trainer_device"] == "cpu"
+    assert captured["trained"] is True
+    assert captured["env_closed"] is True
+    assert captured["app_closed"] is True
 
 
 @pytest.mark.runtime_preflight

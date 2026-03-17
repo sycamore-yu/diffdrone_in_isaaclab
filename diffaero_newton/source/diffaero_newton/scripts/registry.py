@@ -129,6 +129,7 @@ def build_env(
     num_envs: int,
     device: str,
     differentiable: bool,
+    sensor: str = "relpos",
 ):
     """Build an environment configured for the selected dynamics backend."""
     name = name.lower()
@@ -171,20 +172,23 @@ def build_env(
         return MAPCEnv(cfg=cfg, device=device)
 
     if name == "obstacle_avoidance":
-        from diffaero_newton.configs.drone_env_cfg import DroneEnvCfg
+        from diffaero_newton.configs.obstacle_env_cfg import ObstacleAvoidanceEnvCfg
+        from diffaero_newton.configs.sensor_cfg import build_sensor_cfg
         from diffaero_newton.envs.obstacle_env import ObstacleAvoidanceEnv
 
-        cfg = DroneEnvCfg()
+        cfg = ObstacleAvoidanceEnvCfg()
         cfg.num_envs = num_envs
         cfg.scene.num_envs = num_envs
+        cfg.sensor_cfg = build_sensor_cfg(sensor, cfg.num_obstacles)
+        cfg.__post_init__()
         cfg.dynamics = build_dynamics_cfg(dynamics, num_envs=num_envs, requires_grad=differentiable, dt=cfg.sim.dt)
         return ObstacleAvoidanceEnv(cfg=cfg, device=device)
 
     if name == "racing":
-        from diffaero_newton.configs.drone_env_cfg import DroneEnvCfg
+        from diffaero_newton.configs.racing_env_cfg import RacingEnvCfg
         from diffaero_newton.envs.racing_env import RacingEnv
 
-        cfg = DroneEnvCfg()
+        cfg = RacingEnvCfg()
         cfg.num_envs = num_envs
         cfg.scene.num_envs = num_envs
         cfg.dynamics = build_dynamics_cfg(dynamics, num_envs=num_envs, requires_grad=differentiable, dt=cfg.sim.dt)

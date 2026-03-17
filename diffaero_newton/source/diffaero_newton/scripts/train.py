@@ -41,6 +41,12 @@ def parse_args():
         default="pointmass",
         help="Dynamics model: pointmass, continuous_pointmass, discrete_pointmass, quadrotor",
     )
+    parser.add_argument(
+        "--sensor",
+        type=str,
+        default="relpos",
+        help="Obstacle sensor: relpos, camera, lidar",
+    )
     parser.add_argument("--max_iter", type=int, default=100, help="Maximum training iterations")
     parser.add_argument("--l_rollout", type=int, default=16, help="Rollout length per iteration")
     parser.add_argument("--n_envs", type=int, default=64, help="Number of parallel environments")
@@ -268,6 +274,7 @@ def main():
             num_envs=args.n_envs,
             device=requested_device,
             differentiable=differentiable,
+            sensor=args.sensor,
         )
         device = str(env.device)
         if device != requested_device:

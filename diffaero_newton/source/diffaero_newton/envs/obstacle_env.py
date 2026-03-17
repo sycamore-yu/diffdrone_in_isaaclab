@@ -1,15 +1,15 @@
-"""Obstacle avoidance environment with multi-modal sensor observations.
+"""Obstacle avoidance environment with multi-modal sensor observations."""
 
-Extends DroneEnv to inject sensor-based observations (Camera/LiDAR/RelPos)
-into the observation dict, enabling differentiable obstacle avoidance training.
-"""
+from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Dict, Optional
+
 import torch
 
+from diffaero_newton.configs.obstacle_env_cfg import ObstacleAvoidanceEnvCfg
+from diffaero_newton.configs.sensor_cfg import SensorCfg
 from diffaero_newton.envs.drone_env import DroneEnv
-from diffaero_newton.envs.sensors import create_sensor, CameraSensor, LiDARSensor, RelativePositionSensor
-from diffaero_newton.configs.sensor_cfg import SensorCfg, RelposSensorCfg
+from diffaero_newton.envs.sensors import create_sensor
 
 
 class ObstacleAvoidanceEnv(DroneEnv):
@@ -19,17 +19,22 @@ class ObstacleAvoidanceEnv(DroneEnv):
     Supported sensors: 'relpos', 'camera', 'lidar'.
     """
 
-    def __init__(self, cfg, render_mode=None, sensor_cfg: Optional[SensorCfg] = None, **kwargs):
+    cfg: ObstacleAvoidanceEnvCfg
+
+    def __init__(
+        self,
+        cfg: ObstacleAvoidanceEnvCfg,
+        render_mode: str | None = None,
+        sensor_cfg: Optional[SensorCfg] = None,
+        **kwargs,
+    ):
         super().__init__(cfg, render_mode, **kwargs)
 
-        # Default to relpos if not provided
         if sensor_cfg is None:
-            sensor_cfg = RelposSensorCfg(n_obstacles=self.obstacle_manager.cfg.num_obstacles)
+            sensor_cfg = cfg.sensor_cfg
 
         self.sensor = create_sensor(sensor_cfg, self.num_envs, self.device)
         self.sensor_cfg = sensor_cfg
-
-        # Pre-compute sensor observation dimensions
         self.sensor_obs_dim = self.sensor.H * self.sensor.W
 
     def _get_observations(self) -> Dict[str, torch.Tensor]:

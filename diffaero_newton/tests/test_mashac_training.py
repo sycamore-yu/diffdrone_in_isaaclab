@@ -10,7 +10,7 @@ from diffaero_newton.envs.mapc_env import create_env
 from diffaero_newton.training.mashac import MASHAC, MASHACAgent
 
 
-pytestmark = pytest.mark.usefixtures("isaaclab_app")
+pytestmark = [pytest.mark.usefixtures("isaaclab_app"), pytest.mark.cpu_smoke]
 
 
 def _make_env(device: str, num_envs: int = 2, n_agents: int = 3):
@@ -28,7 +28,7 @@ def _make_env(device: str, num_envs: int = 2, n_agents: int = 3):
 
 
 def test_mashac_agent_action_shape() -> None:
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = "cpu"
     agent = MASHACAgent(
         obs_dim=111,
         state_dim=30,
@@ -44,7 +44,7 @@ def test_mashac_agent_action_shape() -> None:
 
 
 def test_mashac_training_iteration() -> None:
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = "cpu"
     env = _make_env(device=device)
     trainer = MASHAC(
         env,
@@ -88,7 +88,7 @@ def test_mashac_training_iteration() -> None:
 
 
 def test_mashac_collect_rollout_returns_detached_observation() -> None:
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = "cpu"
     env = _make_env(device=device)
     trainer = MASHAC(
         env,

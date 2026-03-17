@@ -96,6 +96,28 @@ class TestObstacleEnvironment:
         assert extras["truncated"].shape == (num_envs,)
         assert extras["next_obs_before_reset"].shape == (num_envs, 21)
 
+    @pytest.mark.cpu_smoke
+    def test_registry_camera_sensor_updates_observation_contract(self) -> None:
+        """Test registry-built obstacle envs expose sensor-aware observation dimensions."""
+        from diffaero_newton.scripts.registry import build_env
+
+        env = build_env(
+            name="obstacle_avoidance",
+            dynamics="pointmass",
+            num_envs=2,
+            device="cpu",
+            differentiable=True,
+            sensor="camera",
+        )
+
+        try:
+            obs, _ = env.reset()
+            assert obs["policy"].shape == (2, env.cfg.num_observations)
+            assert env.observation_space.shape == (env.cfg.num_observations,)
+            assert env.cfg.sensor_cfg.name == "camera"
+        finally:
+            env.close()
+
     def test_goal_tracking_reward(self, device, num_envs):
         """Test that reward increases when moving toward goal."""
         from diffaero_newton.envs.drone_env import DroneEnv
@@ -328,6 +350,29 @@ class TestIntegration:
         _, _state, loss, _reward, extras = env.step(action)
 
         assert not extras["reset"].any()
+        assert loss.requires_grad
+        loss.sum().backward()
+        assert action.grad is not None
+        assert torch.isfinite(action.grad).all()
+
+    @pytest.mark.cpu_smoke
+    def test_loss_remains_differentiable_when_step_triggers_reset(self, device):
+        """Test reset-triggering obstacle steps keep the differentiable loss graph intact."""
+        from diffaero_newton.envs.drone_env import DroneEnv
+        from diffaero_newton.configs.drone_env_cfg import DroneEnvCfg
+
+        cfg = DroneEnvCfg(num_envs=1)
+        env = DroneEnv(cfg=cfg, device=str(device))
+        env.reset()
+        _prepare_non_resetting_step(env)
+        env.episode_length_buf[0] = env.episode_length_max
+
+        action = torch.full((1, 4), 0.1, device=device, requires_grad=True)
+        _, _state, loss, _reward, extras = env.step(action)
+
+        assert extras["reset"][0]
+        assert not extras["terminated"][0]
+        assert extras["truncated"][0]
         assert loss.requires_grad
         loss.sum().backward()
         assert action.grad is not None
