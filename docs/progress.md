@@ -27,7 +27,7 @@ This document serves as the ground truth for the current actual migration status
 - [x] **Position Control**: Implemented (Single-agent target position tracking)
 - [x] **Multi-Agent Position Control**: Implemented (Multi-agent with collision rewards and proper shape flattening)
 - [x] **Obstacle Avoidance**: Implemented (ObstacleAvoidanceEnv with multi-modal sensor integration)
-- [x] **Racing**: Implemented (figure-8 gate track with gate passing detection)
+- [ ] **Racing**: Partial only. Figure-8 gate geometry and gate-frame observations exist, but gate progress/reward wiring is incomplete and there is still no dedicated racing smoke proving the end-to-end task semantics.
 - [x] **Sim2RealPositionControl**: Implemented as `sim2real_position_control` with square-target switching derived from DiffAero's reference environment; validated on the unified entry with point-mass dynamics.
 
 ### Sensors
@@ -38,7 +38,7 @@ This document serves as the ground truth for the current actual migration status
 ## Gaps Relative to Reference DiffAero
 - Missing algorithms on main: `SHA2C`.
 - Missing dynamics parity: full DiffAero-like quadrotor control semantics and clearer frame/control abstractions from `reference/diffaero/dynamics`.
-- Missing environment parity: no major task gap remains for the current DiffAero migration slice, but richer sim-to-real/deployment workflows are still absent.
+- Missing environment parity: racing is still incomplete in reward/progress semantics, and obstacle/racing explicit observation contracts are not yet aligned with their real emitted tensors. Richer sim-to-real/deployment workflows are also still absent.
 - Missing world-model parity: perception-enabled DreamerV3 variants, richer task coverage beyond the current `position_control` smoke path, and any Hydra-style experiment workflow around it.
 - Missing tooling parity: Hydra-based train/test/export workflow, sweep tooling, Optuna / WandB integration, and export/deploy utilities.
 
@@ -68,4 +68,10 @@ Currently verified on `main`:
 - `conda run -n isaaclab-newton python diffaero_newton/source/diffaero_newton/scripts/train.py --algo apg --env position_control --dynamics discrete_pointmass --max_iter 1 --l_rollout 1 --n_envs 2 --device cuda --log_interval 1` (Discrete point-mass unified entry GPU smoke)
 
 ### Remaining validation gaps
+- No dedicated racing smoke currently validates gate progression, reward semantics, or end-to-end training viability for the `racing` environment.
+- `ObstacleAvoidanceEnv` and `RacingEnv` still expose stale explicit observation contracts through the current config/registry path, so wrapper-facing space declarations are not yet trustworthy for those envs.
+- The package-level `diffaero_newton.__main__` entry still has an unverified device-plumbing mismatch risk because trainer and environment device resolution are not driven from the same explicit path.
+- The obstacle autograd reset fix is not yet protected by a reset-triggering differentiable regression test; current differentiable obstacle checks intentionally avoid resets.
+- The current `world` smoke exercises only a single `agent.step()` path and does not yet prove replay readiness or world-model update behavior on the GPU path.
+- `test_mashac_training.py` is not currently assigned to the new `cpu_smoke` or `gpu_smoke` validation tiers, so marker-based smoke runs can silently skip MASHAC coverage.
 - Pytest markers now distinguish `cpu_smoke`, `gpu_smoke`, and `runtime_preflight`, but the full suite has not yet been reorganized around dedicated CI jobs for those layers.
