@@ -55,6 +55,41 @@ def parse_args():
     parser.add_argument("--device", type=str, default="cuda", help="Device")
     parser.add_argument("--save_dir", type=str, default="checkpoints", help="Checkpoint save directory")
     parser.add_argument("--log_interval", type=int, default=10, help="Log every N iterations")
+    parser.add_argument(
+        "--quadrotor-control-mode",
+        type=str,
+        choices=("motor_thrust", "body_rate"),
+        default=None,
+        help="Optional quadrotor control mode override for unified env entry.",
+    )
+    parser.add_argument(
+        "--quadrotor-drag-coeff-xy",
+        type=float,
+        default=None,
+        help="Optional quadrotor xy linear drag override.",
+    )
+    parser.add_argument(
+        "--quadrotor-drag-coeff-z",
+        type=float,
+        default=None,
+        help="Optional quadrotor z linear drag override.",
+    )
+    parser.add_argument(
+        "--quadrotor-k-angvel",
+        type=float,
+        nargs=3,
+        default=None,
+        metavar=("KX", "KY", "KZ"),
+        help="Optional quadrotor body-rate feedback gains override.",
+    )
+    parser.add_argument(
+        "--quadrotor-max-body-rates",
+        type=float,
+        nargs=3,
+        default=None,
+        metavar=("WX", "WY", "WZ"),
+        help="Optional quadrotor body-rate command limits in rad/s.",
+    )
     parser.add_argument("--world_warmup_steps", type=int, default=32, help="Replay warmup transitions for world")
     parser.add_argument("--world_min_ready_steps", type=int, default=8, help="Minimum replay steps before world updates")
     parser.add_argument("--world_batch_size", type=int, default=8, help="World-model batch size")
@@ -76,6 +111,24 @@ def _reset_env(env):
     return reset_out
 
 
+def _build_dynamics_overrides(args) -> dict[str, Any]:
+    overrides: dict[str, Any] = {}
+    if args.dynamics != "quadrotor":
+        return overrides
+
+    if args.quadrotor_control_mode is not None:
+        overrides["control_mode"] = args.quadrotor_control_mode
+    if args.quadrotor_drag_coeff_xy is not None:
+        overrides["drag_coeff_xy"] = args.quadrotor_drag_coeff_xy
+    if args.quadrotor_drag_coeff_z is not None:
+        overrides["drag_coeff_z"] = args.quadrotor_drag_coeff_z
+    if args.quadrotor_k_angvel is not None:
+        overrides["k_angvel"] = tuple(args.quadrotor_k_angvel)
+    if args.quadrotor_max_body_rates is not None:
+        overrides["max_body_rates"] = tuple(args.quadrotor_max_body_rates)
+    return overrides
+
+
 def _run_apg_iteration(agent, env, obs, l_rollout: int):
     for _ in range(l_rollout):
         policy_obs = get_policy_obs(obs).to(agent.device)
@@ -92,6 +145,7 @@ def _run_apg_iteration(agent, env, obs, l_rollout: int):
     metrics = agent.update_actor()
     if hasattr(env, "detach_graph"):
         env.detach_graph()
+        obs = env._get_observations()
     return obs, metrics
 
 
@@ -275,6 +329,7 @@ def main():
             device=requested_device,
             differentiable=differentiable,
             sensor=args.sensor,
+            dynamics_overrides=_build_dynamics_overrides(args),
         )
         device = str(env.device)
         if device != requested_device:

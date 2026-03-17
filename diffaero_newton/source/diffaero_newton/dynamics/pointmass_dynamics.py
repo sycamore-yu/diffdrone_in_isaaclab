@@ -169,6 +169,8 @@ class PointMassConfig:
     requires_grad: bool = False
     mass: float = 1.0
     drag_coeff: float = 0.1
+    max_acc_xy: float = 20.0
+    max_acc_z: float = 40.0
     solver_type: str = "semi_implicit"
     n_substeps: int = 1
 
@@ -190,7 +192,7 @@ class _PointMassBase:
         self.config = config
         self.num_envs = config.num_envs
         self.device = torch.device(device)
-        self.gravity = torch.tensor([0.0, 0.0, GRAVITY], dtype=torch.float32, device=self.device)
+        self.gravity = torch.tensor([0.0, 0.0, -GRAVITY], dtype=torch.float32, device=self.device)
         self._state_tensor = torch.zeros(self.num_envs, 13, dtype=torch.float32, device=self.device)
         self._control_tensor = torch.zeros(self.num_envs, 3, dtype=torch.float32, device=self.device)
         self.reset_states()
@@ -219,8 +221,17 @@ class _PointMassBase:
         new_state[env_ids, 10:13] = 0.0
         self._state_tensor = new_state
 
+    def normalized_action_to_acceleration(self, thrust_vector: torch.Tensor) -> torch.Tensor:
+        control = thrust_vector[..., :3].to(self.device, dtype=torch.float32)
+        xy = (control[..., :2].clamp(0.0, 1.0) * 2.0 - 1.0) * float(self.config.max_acc_xy)
+        z = control[..., 2:3].clamp(0.0, 1.0) * float(self.config.max_acc_z)
+        return torch.cat((xy, z), dim=-1)
+
+    def apply_acceleration_command(self, acceleration_world: torch.Tensor):
+        self._control_tensor = acceleration_world.to(self.device, dtype=torch.float32) * float(self.config.mass)
+
     def apply_control(self, thrust_vector: torch.Tensor):
-        self._control_tensor = thrust_vector[..., :3].to(self.device, dtype=torch.float32)
+        self.apply_acceleration_command(self.normalized_action_to_acceleration(thrust_vector))
 
     def integrate(self, dt: Optional[float] = None):
         raise NotImplementedError
@@ -248,7 +259,7 @@ class ContinuousPointMass(_PointMassBase):
     def __init__(self, config: PointMassConfig, device: str = "cpu"):
         super().__init__(config, device=device)
         self.wp_device = wp.get_device(str(self.device))
-        self.gravity_wp = wp.vec3(0.0, 0.0, GRAVITY)
+        self.gravity_wp = wp.vec3(0.0, 0.0, -GRAVITY)
 
         builder = newton.ModelBuilder()
         builder.rigid_gap = 0.05
@@ -267,23 +278,26 @@ class ContinuousPointMass(_PointMassBase):
         self.solver = newton.solvers.SolverSemiImplicit(self.model)
 
     def integrate(self, dt: Optional[float] = None):
-        dt = dt or self.config.dt
+        dt = float(dt or self.config.dt)
         sub_dt = dt / self.config.n_substeps
 
         state = self._state_tensor
-        controls = self._control_tensor
+        inv_mass = 1.0 / float(self.config.mass)
         for _ in range(self.config.n_substeps):
-            state = _ContinuousPointMassStepFn.apply(
-                self.model,
-                self.solver,
-                self.wp_device,
-                self.gravity_wp,
-                float(self.config.drag_coeff),
-                float(self.config.mass),
-                state,
-                controls,
-                float(sub_dt),
-            )
+            pos = state[:, :3]
+            vel = state[:, 7:10]
+
+            acc = self._control_tensor * inv_mass + self.gravity - self.config.drag_coeff * inv_mass * vel
+            next_pos = pos + sub_dt * vel
+            next_vel = vel + sub_dt * acc
+
+            next_state = state.clone()
+            next_state[:, :3] = next_pos
+            next_state[:, 3:7] = torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device)
+            next_state[:, 7:10] = next_vel
+            next_state[:, 10:13] = 0.0
+            state = next_state
+
         self._state_tensor = state
 
 

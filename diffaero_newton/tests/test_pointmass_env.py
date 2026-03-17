@@ -39,3 +39,38 @@ def test_pointmass_env_step_supports_backward(cfg_cls: type[PointMassCfg]) -> No
         pytest.fail(f"Point-mass environment backward test failed: {error}")
     finally:
         env.close()
+
+
+@pytest.mark.cpu_smoke
+def test_pointmass_env_normalized_actions_move_symmetrically_in_x() -> None:
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    cfg = DroneEnvCfg()
+    cfg.num_envs = 2
+    cfg.scene.num_envs = 2
+    cfg.decimation = 1
+    cfg.dynamics = PointMassCfg(num_envs=2, requires_grad=False, dt=cfg.sim.dt)
+
+    env = create_env(cfg=cfg, device=device)
+    env.reset(seed=0)
+
+    try:
+        actions = torch.tensor(
+            [
+                [1.0, 0.5, 0.25, 0.0],
+                [0.0, 0.5, 0.25, 0.0],
+            ],
+            device=device,
+        )
+        _obs, state, _loss_terms, _reward, extras = env.step(actions)
+
+        assert not extras["reset"].any()
+        assert state[0, 7].item() > 0.0
+        assert state[1, 7].item() < 0.0
+
+        _obs, state, _loss_terms, _reward, extras = env.step(actions)
+        assert not extras["reset"].any()
+        assert state[0, 0].item() > 0.0
+        assert state[1, 0].item() < 0.0
+    finally:
+        env.close()

@@ -526,6 +526,7 @@ class SHAC:
                 self.writer.add_scalar(f"train/{key}", value, self.iteration)
             episode = self.last_extras.get("episode", {})
             obstacles = self.last_extras.get("obstacles", {})
+            racing = self.last_extras.get("racing", {})
             if "r" in episode:
                 self.writer.add_scalar("env/episode_reward", episode["r"], self.iteration)
             if "l" in episode:
@@ -534,6 +535,14 @@ class SHAC:
                 self.writer.add_scalar("env/nearest_obstacle_dist", obstacles["nearest_dist"], self.iteration)
             if "collisions" in obstacles:
                 self.writer.add_scalar("env/collisions", obstacles["collisions"], self.iteration)
+            if "gate_passed" in racing:
+                self.writer.add_scalar("env/racing_gate_passed", racing["gate_passed"], self.iteration)
+            if "gate_collisions" in racing:
+                self.writer.add_scalar("env/racing_gate_collisions", racing["gate_collisions"], self.iteration)
+            if "passed_gate_mean" in racing:
+                self.writer.add_scalar("env/racing_passed_gate_mean", racing["passed_gate_mean"], self.iteration)
+            if "target_gate_mean" in racing:
+                self.writer.add_scalar("env/racing_target_gate_mean", racing["target_gate_mean"], self.iteration)
             self.writer.flush()
 
     def _save_checkpoint(self):
