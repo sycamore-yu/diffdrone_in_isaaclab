@@ -271,9 +271,6 @@ class TestIntegration:
     """Integration tests for full training loop."""
 
     @pytest.mark.gpu_smoke
-    @pytest.mark.skip(
-        reason="Known SHAC actor update inplace-autograd failure on current main; excluded from passing test gates",
-    )
     def test_training_iteration(self, cuda_device, num_envs):
         """Test a single SHAC training iteration on the intended CUDA path."""
         from diffaero_newton.envs.drone_env import DroneEnv

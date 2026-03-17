@@ -152,8 +152,12 @@ class DroneEnv(DirectRLEnv):
         positions = torch.zeros(len(env_ids), 3, device=self.device)
         positions[:, 2] = 1.0
         self.drone.reset_states(positions, env_ids=env_ids_tensor)
-        self.prev_actions[env_ids_tensor] = 0.0
-        self.actions[env_ids_tensor] = 0.0
+        reset_mask = torch.zeros(self.num_envs, 1, dtype=torch.bool, device=self.device)
+        reset_mask[env_ids_tensor] = True
+        zero_actions = torch.zeros_like(self.actions)
+        # Rebind action history instead of mutating graph-connected tensors in place.
+        self.prev_actions = torch.where(reset_mask, zero_actions, self.prev_actions)
+        self.actions = torch.where(reset_mask, zero_actions, self.actions)
         self._sample_goals_for_envs(env_ids_tensor)
         self.obstacle_manager.reset(env_ids_tensor)
 
