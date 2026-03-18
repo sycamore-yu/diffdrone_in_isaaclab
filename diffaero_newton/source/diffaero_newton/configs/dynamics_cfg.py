@@ -61,3 +61,4 @@ class DiscretePointMassCfg(DynamicsCfg):
     drag_coeff: float = 0.1
     solver_type: str = "semi_implicit"
     n_substeps: int = 1
+    action_frame: str = "world"
