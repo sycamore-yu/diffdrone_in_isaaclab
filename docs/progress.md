@@ -40,24 +40,25 @@ This document serves as the ground truth for the current actual migration status
 ## Gaps Relative to Reference DiffAero
 
 ### Sensor Parity Gaps
-- **IMU**: `reference/diffaero/utils/sensor.py:360-486` 完整实现，包含 acc/gyro drift, noise, mounting error；`diffaero_newton` 完全缺失
-- **Mixed geometry**: reference 支持 cube + ground_plane + sphere ray casting；diffaero_newton 仅支持 sphere
-- **RelPos 扩展**: reference 支持 walls/ceiling；diffaero_newton 简化版
+- **IMU**: `reference/diffaero/utils/sensor.py:360-486` 完整 IMU 类（含 acc/gyro drift, noise, mounting error）；`diffaero_newton/envs/sensors.py` 完全缺失此类
+- **Mixed geometry**: `sensors.py` 含 `raydist3d_cube`/`raydist3d_ground_plane` 代码，但 `ObstacleManager` 仅提供 sphere 数据，cube/ground_plane 路径从未触发
+- **RelPos walls/ceiling**: `RelativePositionSensor` 有公式支持，但实现仅返回零填充
 
 ### Network/Agents Gaps
-- RNN-based actors (StochasticActorCriticV, StochasticAsymmetricActorCriticV, RPLActorCritic, StochasticActorCriticQ) 未实现
-- 对应 `reference/diffaero/network/agents.py` 缺失
+- `reference/diffaero/network/agents.py` 中所有 RNN-based actors 未移植：
+  - `StochasticActorCriticV`, `StochasticAsymmetricActorCriticV`, `RPLActorCritic`, `StochasticActorCriticQ`
+- `diffaero_newton` 所有 Actor/Critic 为简单 feed-forward，无 `build_network` 函数
 
 ### ObstacleManager Gaps
-- 立方体障碍物 (`p_cubes`, `lwh_cubes`, `rpy_cubes`) 未实现
-- 地面检测 (`z_ground_plane`) 未实现
-- Walls/Ceiling 支持未实现
+- 仅存储 `[x,y,z,radius]`，无 `p_cubes/lwh_cubes/rpy_cubes`
+- 无 `z_ground_plane` 概念
+- 无 walls/ceiling 实现
 
 ### Tooling Gaps
-- PolicyExporter (`utils/exporter.py`) 未实现
-- ObstacleAvoidanceRenderer (`utils/render.py`) 未实现
-- Full Logger 未实现
-- quaternion_rotate 系列 math utilities 未完整移植
+- `reference/utils/exporter.py` (8.4KB) 未移植
+- `reference/utils/render.py` (46KB) 未移植
+- `reference/utils/logger.py` (7.3KB) 未移植
+- `reference/utils/math.py` (8.5KB) 未移植
 
 ### Algorithm Gaps
 - (All major algorithms from reference/diffaero 已迁移)
