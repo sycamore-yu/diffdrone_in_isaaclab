@@ -47,6 +47,16 @@ def build_algo(name: str, obs_dim: int, action_dim: int = ACTION_DIM, device: st
         cfg = kwargs.pop("cfg", None) or TrainingCfg(device=device)
         return SHACAgent(obs_dim=obs_dim, action_dim=action_dim, cfg=cfg)
 
+    if name == "sha2c":
+        from diffaero_newton.training.shac import SHA2CAgent
+        from diffaero_newton.configs.training_cfg import TrainingCfg
+
+        state_dim = kwargs.pop("state_dim", None)
+        if state_dim is None:
+            raise ValueError("SHA2C requires privileged state_dim.")
+        cfg = kwargs.pop("cfg", None) or TrainingCfg(device=device)
+        return SHA2CAgent(obs_dim=obs_dim, state_dim=state_dim, action_dim=action_dim, cfg=cfg)
+
     if name in ("world", "dreamerv3"):
         from diffaero_newton.training.dreamerv3 import World_Agent
 
@@ -74,9 +84,9 @@ ALGO_REGISTRY = {
     "ppo": "diffaero_newton.training.ppo.PPO",
     "appo": "diffaero_newton.training.ppo.AsymmetricPPO",
     "shac": "diffaero_newton.training.shac.SHAC",
+    "sha2c": "diffaero_newton.training.shac.SHA2C",
     "world": "diffaero_newton.training.dreamerv3.World_Agent",
     "mashac": "diffaero_newton.training.mashac.MASHAC",
-    # "sha2c": "NOT_MIGRATED - see reference/diffaero/algo/SHAC.py",
 }
 
 ENV_REGISTRY = {

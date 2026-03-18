@@ -27,6 +27,7 @@ def test_registry_points_to_real_modules():
     assert ENV_REGISTRY["sim2real_position_control"] == "diffaero_newton.envs.position_control_env.Sim2RealPositionControlEnv"
     assert ENV_REGISTRY["mapc"] == "diffaero_newton.envs.mapc_env.MAPCEnv"
     assert ALGO_REGISTRY["mashac"] == "diffaero_newton.training.mashac.MASHAC"
+    assert ALGO_REGISTRY["sha2c"] == "diffaero_newton.training.shac.SHA2C"
     assert DYNAMICS_REGISTRY["pointmass"] == "diffaero_newton.configs.dynamics_cfg.PointMassCfg"
     assert ALGO_REGISTRY["world"] == "diffaero_newton.training.dreamerv3.World_Agent"
     assert DYNAMICS_REGISTRY["continuous_pointmass"] == "diffaero_newton.configs.dynamics_cfg.ContinuousPointMassCfg"
@@ -46,6 +47,7 @@ def test_train_list_runs_without_pythonpath_hack():
 
     assert result.returncode == 0, result.stderr
     assert "Algorithms:" in result.stdout
+    assert "sha2c" in result.stdout
     assert "position_control" in result.stdout
     assert "sim2real_position_control" in result.stdout
 

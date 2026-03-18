@@ -14,7 +14,7 @@ This document serves as the ground truth for the current actual migration status
 - [x] **SHAC**: Implemented (short-horizon actor-critic with Newton differentiable physics)
 - [x] **APG / APG_sto**: Implemented (deterministic APG + stochastic APG with entropy regularisation)
 - [x] **PPO / Asymmetric PPO**: Implemented (clipped surrogate with GAE, privilege state critic)
-- [ ] **SHA2C**: Not migrated on main
+- [x] **SHA2C**: Implemented and wired into the unified training entry as `--algo sha2c`. Current validated path is the privileged-state `position_control` point-mass rollout on CPU via `test_shac_training.py` and a direct `train.py --algo sha2c` smoke command.
 - [x] **MASHAC**: Implemented for `mapc` with shared actor + centralized critic, wired into the unified training entry as `--algo mashac`
 - [x] **DreamerV3 / world**: Wired into `scripts/registry.py` and the unified training entry as `--algo world`. Current validated path is a state-only world-model rollout on `position_control`; it now has both CPU contract smoke and a CUDA-backed smoke gate on CUDA-capable hosts, while broader task parity remains incomplete.
 
@@ -38,7 +38,6 @@ This document serves as the ground truth for the current actual migration status
 - [x] **Lidar**: Implemented (360° ray-casting with vertical/horizontal coverage), but still simplified relative to the reference mount/randomization stack.
 
 ## Gaps Relative to Reference DiffAero
-- Missing algorithms on main: `SHA2C`.
 - Known regression on main: fixed on merged `main` as of 2026-03-18. The env-backed quadrotor unified-entry construction path no longer passes unsupported `action_frame` into `DroneConfig`.
 - Missing dynamics parity: full DiffAero-like quadrotor control semantics are still partial, and point-mass local/world-frame parity is still narrower than the reference implementation.
 - Missing environment parity: richer sim-to-real/deployment workflows are still absent, obstacle avoidance remains narrower than the reference task on geometry/randomization/state semantics, and racing validation currently covers the point-mass APG path rather than every algorithm/backend combination.
@@ -56,11 +55,13 @@ Passing checks currently verified on `main`:
 - `conda run -n isaaclab-newton pytest diffaero_newton/tests/test_mashac_training.py -q` (MASHAC multi-agent rollout/update smoke on `mapc`, now assigned to the `cpu_smoke` tier)
 - `conda run -n isaaclab-newton pytest diffaero_newton/tests/test_racing_env.py -q` (Racing observation contract smoke and gate-pass progression/reward regression)
 - `conda run -n isaaclab-newton pytest diffaero_newton/tests/test_drone_dynamics.py -q` (Quadrotor body-rate controller, drag model, and differentiable drone dynamics regression coverage)
+- `conda run -n isaaclab-newton pytest diffaero_newton/tests/test_shac_training.py -q` (SHAC-family CPU smoke including the new SHA2C agent/trainer rollout/update path)
 - `conda run -n isaaclab-newton pytest diffaero_newton/tests/test_train_entry.py -q` (Runtime-preflight coverage for the unified training entry, including the quadrotor body-rate configuration path restored on merged `main`)
 - `conda run -n isaaclab-newton pytest diffaero_newton/tests/test_pointmass_env.py -q` (Point-mass env propagation/backward smoke plus normalized `x`-action symmetry regression coverage)
 - `conda run -n isaaclab-newton python diffaero_newton/source/diffaero_newton/scripts/train.py --list` (Unified training entry import/registry smoke test)
 - `conda run -n isaaclab-newton python diffaero_newton/source/diffaero_newton/scripts/train.py --algo world --env position_control --dynamics pointmass --max_iter 1 --l_rollout 4 --n_envs 2 --device cpu --log_interval 1 --world_warmup_steps 4 --world_min_ready_steps 2 --world_batch_size 2 --world_batch_length 2 --world_imagine_length 2` (DreamerV3/world unified-entry CPU smoke)
 - `conda run -n isaaclab-newton python diffaero_newton/source/diffaero_newton/scripts/train.py --algo mashac --env mapc --dynamics continuous_pointmass --max_iter 1 --l_rollout 2 --n_envs 2 --device cpu --log_interval 1` (Unified-entry MASHAC CPU smoke)
+- `conda run -n isaaclab-newton python diffaero_newton/source/diffaero_newton/scripts/train.py --algo sha2c --env position_control --dynamics pointmass --max_iter 1 --l_rollout 2 --n_envs 2 --device cpu --log_interval 1` (Unified-entry SHA2C CPU smoke on privileged-state position control)
 - `conda run -n isaaclab-newton python diffaero_newton/source/diffaero_newton/scripts/train.py --algo apg --env position_control --dynamics quadrotor --quadrotor-control-mode body_rate --quadrotor-max-body-rates 3.0 3.0 1.5 --quadrotor-k-angvel 5.0 4.0 3.0 --quadrotor-drag-coeff-xy 0.05 --quadrotor-drag-coeff-z 0.1 --max_iter 1 --l_rollout 1 --n_envs 1 --device cpu --log_interval 1` (Unified-entry quadrotor body-rate smoke after the merged factory fix)
 
 ### GPU-validated differentiable paths
@@ -77,7 +78,7 @@ Passing checks currently verified on `main`:
 
 ### Known failing / blocked
 - No currently confirmed blocking regression is recorded on merged `main` for the migrated surfaces summarized here.
-- Remaining gaps are parity gaps rather than hard failures: `SHA2C`, full DiffAero quadrotor semantics, richer obstacle/sensor realism, perception-enabled DreamerV3 coverage, and Hydra/export/sweep tooling.
+- Remaining gaps are parity gaps rather than hard failures: full DiffAero quadrotor semantics, richer obstacle/sensor realism, perception-enabled DreamerV3 coverage, and Hydra/export/sweep tooling.
 
 ### Remaining validation gaps
 - Racing is now validated on the differentiable point-mass APG path, but SHAC/PPO-style convergence coverage is still lighter than the point-mass APG validation path.
@@ -91,6 +92,7 @@ Passing checks currently verified on `main`:
 | apg | - | test_apg.py | test_apg.py (CUDA) | train.py --algo apg |
 | ppo | - | test_ppo_training.py | - | train.py --algo ppo |
 | shac | - | test_shac_training.py | - | train.py --algo shac |
+| sha2c | - | test_shac_training.py | - | train.py --algo sha2c |
 | mashac | - | test_mashac_training.py | - | train.py --algo mashac |
 | world | - | test_world_training.py | test_world_training.py (CUDA) | train.py --algo world |
 | pointmass | - | test_pointmass_env.py | test_pointmass_env.py (CUDA) | - |
