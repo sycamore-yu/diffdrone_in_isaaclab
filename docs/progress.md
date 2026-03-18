@@ -40,8 +40,8 @@ This document serves as the ground truth for the current actual migration status
 ## Gaps Relative to Reference DiffAero
 
 ### Sensor Parity Gaps
-- **IMU**: `reference/diffaero/utils/sensor.py:360-486` 完整 IMU 类（含 acc/gyro drift, noise, mounting error）；`diffaero_newton/envs/sensors.py` 完全缺失此类
-- **Mixed geometry**: `sensors.py` 含 `raydist3d_cube`/`raydist3d_ground_plane` 代码，但 `ObstacleManager` 仅提供 sphere 数据，cube/ground_plane 路径从未触发
+- [x] **IMU**: `reference/diffaero/utils/sensor.py:360-486` 完整 IMU 类（含 acc/gyro drift, noise, mounting error）；`diffaero_newton/envs/sensors.py` 已实现
+- [x] **Mixed geometry**: `sensors.py` 含 `raydist3d_cube`/`raydist3d_ground_plane` 代码，`ObstacleManager` 现已支持 cube 数据存储和查询
 - **RelPos walls/ceiling**: `RelativePositionSensor` 有公式支持，但实现仅返回零填充
 
 ### Network/Agents Gaps
@@ -50,7 +50,7 @@ This document serves as the ground truth for the current actual migration status
 - `diffaero_newton` 所有 Actor/Critic 为简单 feed-forward，无 `build_network` 函数
 
 ### ObstacleManager Gaps
-- 仅存储 `[x,y,z,radius]`，无 `p_cubes/lwh_cubes/rpy_cubes`
+- [x] 仅存储 `[x,y,z,radius]`，已添加 `p_cubes/lwh_cubes/rpy_cubes` 存储
 - 无 `z_ground_plane` 概念
 - 无 walls/ceiling 实现
 
