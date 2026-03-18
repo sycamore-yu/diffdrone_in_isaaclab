@@ -1,9 +1,10 @@
 {
   "session_id": "WFS-final-migration-delivery",
-  "status": "planning",
+  "status": "completed",
   "created_at": "2026-03-18T16:05:00+08:00",
   "task_description": "Complete the remaining DiffAero -> Newton/IsaacLab migration work in a dedicated worktree, using workflow-plan, isaaclab-newton validation, ai-first-engineering review, docs updates, and one final PR.",
   "worktree": "/home/tong/tongworkspace/diffdroneinisaac_workspace/.wt/final-migration-delivery",
   "base_branch": "main",
-  "feature_branch": "feature/final-migration-delivery"
+  "feature_branch": "feature/final-migration-delivery",
+  "completed_at": "2026-03-18T11:32:12Z"
 }
