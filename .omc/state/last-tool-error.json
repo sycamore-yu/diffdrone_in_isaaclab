@@ -1,7 +1,7 @@
 {
   "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"git fetch origin main && git merge origin/main --no-edit\"}",
-  "error": "Exit code 1\nFrom https://github.com/sycamore-yu/diffdrone_in_isaaclab\n * branch            main       -> FETCH_HEAD\nAuto-merging .beads/backup/backup_state.json\nCONFLICT (content): Merge conflict in .beads/backup/backup_state.json\nAutomatic merge failed; fix conflicts and then commit the result.\n\nFrom https://github.com/sycamore-yu/diffdrone_in_isaaclab\n * branch            main       -> FETCH_HEAD\nAuto-merging .beads/backup/backup_state.json\nCONFLICT (content): Merge conflict in .beads/backup/b...",
-  "timestamp": "2026-03-17T12:55:09.103Z",
-  "retry_count": 2
+  "tool_input_preview": "{\"command\":\"git fetch origin feature/p1-i8x17 && git merge origin/feature/p1-i8x17 --no-edit\",\"description\":\"Merge P1 branch\"}",
+  "error": "Exit code 1\nFrom https://github.com/sycamore-yu/diffdrone_in_isaaclab\n * branch            feature/p1-i8x17 -> FETCH_HEAD\nAuto-merging .beads/backup/backup_state.json\nCONFLICT (content): Merge conflict in .beads/backup/backup_state.json\nAuto-merging .beads/backup/events.jsonl\nCONFLICT (content): Merge conflict in .beads/backup/events.jsonl\nAuto-merging .beads/backup/issues.jsonl\nAuto-merging diffaero_newton/source/diffaero_newton/dynamics/registry.py\nCONFLICT (content): Merge conflict in diffaer...",
+  "timestamp": "2026-03-18T04:47:26.335Z",
+  "retry_count": 1
 }
