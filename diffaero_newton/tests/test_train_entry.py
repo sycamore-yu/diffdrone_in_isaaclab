@@ -171,3 +171,78 @@ def test_direct_rl_shim_honors_decimation():
     env.step(torch.zeros(env.num_envs, 1))
 
     assert env.apply_calls == env.decimation
+
+
+@pytest.mark.cpu_smoke
+def test_apg_iteration_returns_detached_observation_for_next_iteration():
+    sys.path.insert(0, str(REPO_ROOT / "diffaero_newton/source"))
+
+    import diffaero_newton.scripts.train as train_entry
+    from diffaero_newton.scripts.registry import build_algo, build_env, get_policy_obs
+
+    env = build_env(
+        name="position_control",
+        dynamics="pointmass",
+        num_envs=2,
+        device="cpu",
+        differentiable=True,
+    )
+
+    try:
+        obs, _ = env.reset()
+        agent = build_algo(
+            "apg",
+            obs_dim=get_policy_obs(obs).shape[-1],
+            action_dim=env.action_space.shape[0],
+            device="cpu",
+            lr=1.0e-3,
+            l_rollout=2,
+        )
+
+        obs, metrics = train_entry._run_apg_iteration(agent, env, obs, l_rollout=2)
+        assert "actor_loss" in metrics
+        assert get_policy_obs(obs).grad_fn is None
+
+        obs, metrics = train_entry._run_apg_iteration(agent, env, obs, l_rollout=2)
+        assert "actor_loss" in metrics
+        assert get_policy_obs(obs).grad_fn is None
+    finally:
+        env.close()
+
+
+@pytest.mark.cpu_smoke
+def test_build_env_applies_quadrotor_body_rate_overrides_end_to_end():
+    sys.path.insert(0, str(REPO_ROOT / "diffaero_newton/source"))
+
+    from diffaero_newton.scripts.registry import build_env
+
+    env = build_env(
+        name="position_control",
+        dynamics="quadrotor",
+        num_envs=1,
+        device="cpu",
+        differentiable=True,
+        dynamics_overrides={
+            "control_mode": "body_rate",
+            "drag_coeff_xy": 0.05,
+            "drag_coeff_z": 0.1,
+            "k_angvel": (5.0, 4.0, 3.0),
+            "max_body_rates": (3.0, 3.0, 1.5),
+        },
+    )
+
+    try:
+        obs, _ = env.reset()
+        state_before = env.drone.get_flat_state().clone()
+        action = torch.tensor([[0.65, 1.0, 0.0, 0.5]], device=env.device)
+        next_obs, state_after, loss_terms, reward, _extras = env.step(action)
+
+        assert env.cfg.dynamics.control_mode == "body_rate"
+        assert env.drone.config.control_mode == "body_rate"
+        assert env.drone.config.max_body_rates == (3.0, 3.0, 1.5)
+        assert obs["policy"].shape[-1] == next_obs["policy"].shape[-1]
+        assert torch.isfinite(loss_terms).all()
+        assert torch.isfinite(reward).all()
+        assert not torch.allclose(state_before, state_after)
+    finally:
+        env.close()

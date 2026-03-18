@@ -94,7 +94,13 @@ DYNAMICS_REGISTRY = {
 }
 
 
-def build_dynamics_cfg(name: str, num_envs: int, requires_grad: bool, dt: float | None = None):
+def build_dynamics_cfg(
+    name: str,
+    num_envs: int,
+    requires_grad: bool,
+    dt: float | None = None,
+    **overrides,
+):
     """Build a dynamics config object by name."""
     name = name.lower()
     if name == "pointmass":
@@ -120,6 +126,12 @@ def build_dynamics_cfg(name: str, num_envs: int, requires_grad: bool, dt: float 
 
     if dt is not None:
         cfg.dt = dt
+    for key, value in overrides.items():
+        if value is None:
+            continue
+        if not hasattr(cfg, key):
+            raise ValueError(f"Dynamics config '{type(cfg).__name__}' has no field '{key}'.")
+        setattr(cfg, key, value)
     return cfg
 
 
@@ -130,10 +142,12 @@ def build_env(
     device: str,
     differentiable: bool,
     sensor: str = "relpos",
+    dynamics_overrides: dict[str, Any] | None = None,
 ):
     """Build an environment configured for the selected dynamics backend."""
     name = name.lower()
     dynamics = dynamics.lower()
+    dynamics_overrides = dynamics_overrides or {}
 
     if name == "position_control":
         from diffaero_newton.configs.position_control_env_cfg import PositionControlEnvCfg
@@ -142,7 +156,13 @@ def build_env(
         cfg = PositionControlEnvCfg()
         cfg.num_envs = num_envs
         cfg.scene.num_envs = num_envs
-        cfg.dynamics = build_dynamics_cfg(dynamics, num_envs=num_envs, requires_grad=differentiable, dt=cfg.sim.dt)
+        cfg.dynamics = build_dynamics_cfg(
+            dynamics,
+            num_envs=num_envs,
+            requires_grad=differentiable,
+            dt=cfg.sim.dt,
+            **dynamics_overrides,
+        )
         return PositionControlEnv(cfg=cfg, device=device)
 
     if name == "sim2real_position_control":
@@ -152,7 +172,13 @@ def build_env(
         cfg = Sim2RealPositionControlEnvCfg()
         cfg.num_envs = num_envs
         cfg.scene.num_envs = num_envs
-        cfg.dynamics = build_dynamics_cfg(dynamics, num_envs=num_envs, requires_grad=differentiable, dt=cfg.sim.dt)
+        cfg.dynamics = build_dynamics_cfg(
+            dynamics,
+            num_envs=num_envs,
+            requires_grad=differentiable,
+            dt=cfg.sim.dt,
+            **dynamics_overrides,
+        )
         return Sim2RealPositionControlEnv(cfg=cfg, device=device)
 
     if name == "mapc":
@@ -168,6 +194,7 @@ def build_env(
             num_envs=num_envs * cfg.n_agents,
             requires_grad=differentiable,
             dt=cfg.sim.dt,
+            **dynamics_overrides,
         )
         return MAPCEnv(cfg=cfg, device=device)
 
@@ -181,7 +208,13 @@ def build_env(
         cfg.scene.num_envs = num_envs
         cfg.sensor_cfg = build_sensor_cfg(sensor, cfg.num_obstacles)
         cfg.__post_init__()
-        cfg.dynamics = build_dynamics_cfg(dynamics, num_envs=num_envs, requires_grad=differentiable, dt=cfg.sim.dt)
+        cfg.dynamics = build_dynamics_cfg(
+            dynamics,
+            num_envs=num_envs,
+            requires_grad=differentiable,
+            dt=cfg.sim.dt,
+            **dynamics_overrides,
+        )
         return ObstacleAvoidanceEnv(cfg=cfg, device=device)
 
     if name == "racing":
@@ -191,7 +224,13 @@ def build_env(
         cfg = RacingEnvCfg()
         cfg.num_envs = num_envs
         cfg.scene.num_envs = num_envs
-        cfg.dynamics = build_dynamics_cfg(dynamics, num_envs=num_envs, requires_grad=differentiable, dt=cfg.sim.dt)
+        cfg.dynamics = build_dynamics_cfg(
+            dynamics,
+            num_envs=num_envs,
+            requires_grad=differentiable,
+            dt=cfg.sim.dt,
+            **dynamics_overrides,
+        )
         return RacingEnv(cfg=cfg, device=device)
 
     raise ValueError(f"Unknown environment: {name}. Available: {', '.join(sorted(ENV_REGISTRY))}")

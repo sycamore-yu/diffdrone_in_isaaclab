@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Optional
 
 import newton
@@ -11,6 +12,7 @@ import torch
 import warp as wp
 
 from diffaero_newton.common.constants import ARM_LENGTH, DEFAULT_DT, IXX, IYY, IZZ, QUADROTOR_MASS
+from diffaero_newton.dynamics.rate_controller import RateController, RateControllerConfig, quaternion_to_matrix
 
 wp.init()
 
@@ -18,26 +20,30 @@ wp.init()
 @wp.kernel
 def compute_quadrotor_wrenches(
     body_q: wp.array(dtype=wp.transform),
-    controls: wp.array(dtype=wp.float32, ndim=2),
-    arm_length: float,
-    torque_coeff: float,
+    body_qd: wp.array(dtype=wp.spatial_vector),
+    body_force_b: wp.array(dtype=wp.float32, ndim=2),
+    body_torque_b: wp.array(dtype=wp.float32, ndim=2),
+    drag_coeff_xy: float,
+    drag_coeff_z: float,
     body_f: wp.array(dtype=wp.spatial_vector),
 ):
     tid = wp.tid()
-    t1 = controls[tid, 0]
-    t2 = controls[tid, 1]
-    t3 = controls[tid, 2]
-    t4 = controls[tid, 3]
+    tf = body_q[tid]
+    rot = wp.transform_get_rotation(tf)
+    vel_w = wp.spatial_bottom(body_qd[tid])
+    vel_b = wp.quat_rotate_inv(rot, vel_w)
 
-    d = arm_length / 1.41421356
-    force_b = wp.vec3(0.0, 0.0, t1 + t2 + t3 + t4)
+    force_b = wp.vec3(
+        body_force_b[tid, 0] - drag_coeff_xy * vel_b[0],
+        body_force_b[tid, 1] - drag_coeff_xy * vel_b[1],
+        body_force_b[tid, 2] - drag_coeff_z * vel_b[2],
+    )
     torque_b = wp.vec3(
-        d * (t1 + t4 - t2 - t3),
-        d * (-t1 - t4 + t2 + t3),
-        torque_coeff * (t1 + t3 - t2 - t4),
+        body_torque_b[tid, 0],
+        body_torque_b[tid, 1],
+        body_torque_b[tid, 2],
     )
 
-    tf = body_q[tid]
     force_w = wp.transform_vector(tf, force_b)
     torque_w = wp.transform_vector(tf, torque_b)
     wp.atomic_add(body_f, tid, wp.spatial_vector(torque_w, force_w))
@@ -93,13 +99,26 @@ class _NewtonStepFn(torch.autograd.Function):
     """Torch autograd wrapper around a single Newton integration step."""
 
     @staticmethod
-    def forward(ctx, drone: "Drone", state: torch.Tensor, controls: torch.Tensor, dt: float):
-        requires_grad = bool(state.requires_grad or controls.requires_grad or drone.config.requires_grad)
+    def forward(
+        ctx,
+        drone: "Drone",
+        state: torch.Tensor,
+        body_force_b: torch.Tensor,
+        body_torque_b: torch.Tensor,
+        dt: float,
+    ):
+        requires_grad = bool(
+            state.requires_grad
+            or body_force_b.requires_grad
+            or body_torque_b.requires_grad
+            or drone.config.requires_grad
+        )
 
         state_in = drone.model.state(requires_grad=requires_grad)
         state_out = drone.model.state(requires_grad=requires_grad)
         state_wp = wp.from_torch(state.contiguous(), dtype=wp.float32, requires_grad=requires_grad)
-        controls_wp = wp.from_torch(controls.contiguous(), dtype=wp.float32, requires_grad=requires_grad)
+        force_wp = wp.from_torch(body_force_b.contiguous(), dtype=wp.float32, requires_grad=requires_grad)
+        torque_wp = wp.from_torch(body_torque_b.contiguous(), dtype=wp.float32, requires_grad=requires_grad)
         out_state_wp = wp.zeros((drone.num_envs, 13), dtype=wp.float32, device=drone.wp_device, requires_grad=requires_grad)
 
         def _forward_step():
@@ -113,7 +132,15 @@ class _NewtonStepFn(torch.autograd.Function):
             wp.launch(
                 compute_quadrotor_wrenches,
                 dim=drone.num_envs,
-                inputs=(state_in.body_q, controls_wp, drone.arm_length, drone.ct, state_in.body_f),
+                inputs=(
+                    state_in.body_q,
+                    state_in.body_qd,
+                    force_wp,
+                    torque_wp,
+                    drone.drag_coeff_xy,
+                    drone.drag_coeff_z,
+                    state_in.body_f,
+                ),
                 device=drone.wp_device,
             )
             drone.solver.step(state_in, state_out, None, None, dt)
@@ -135,27 +162,32 @@ class _NewtonStepFn(torch.autograd.Function):
 
         ctx.tape = tape
         ctx.state_wp = state_wp
-        ctx.controls_wp = controls_wp
+        ctx.force_wp = force_wp
+        ctx.torque_wp = torque_wp
         ctx.out_state_wp = out_state_wp
         ctx.propagate_state_grad = state.requires_grad
-        ctx.propagate_control_grad = controls.requires_grad
+        ctx.propagate_force_grad = body_force_b.requires_grad
+        ctx.propagate_torque_grad = body_torque_b.requires_grad
         return out_state
 
     @staticmethod
     def backward(ctx, grad_output: torch.Tensor):
         grad_state = None
-        grad_controls = None
+        grad_force = None
+        grad_torque = None
 
         if ctx.tape is not None:
             grad_wp = wp.from_torch(grad_output.contiguous(), dtype=wp.float32, requires_grad=False)
             ctx.tape.backward(grads={ctx.out_state_wp: grad_wp})
             if ctx.propagate_state_grad:
                 grad_state = wp.to_torch(ctx.state_wp.grad).clone()
-            if ctx.propagate_control_grad:
-                grad_controls = wp.to_torch(ctx.controls_wp.grad).clone()
+            if ctx.propagate_force_grad:
+                grad_force = wp.to_torch(ctx.force_wp.grad).clone()
+            if ctx.propagate_torque_grad:
+                grad_torque = wp.to_torch(ctx.torque_wp.grad).clone()
             ctx.tape.zero()
 
-        return None, grad_state, grad_controls, None
+        return None, grad_state, grad_force, grad_torque, None
 
 
 @dataclass
@@ -168,8 +200,60 @@ class DroneConfig:
     arm_length: float = ARM_LENGTH
     mass: float = QUADROTOR_MASS
     inertia: tuple[float, float, float] = (IXX, IYY, IZZ)
+    control_mode: str = "motor_thrust"
+    torque_coeff: float = 0.01
+    max_thrust: float = 20.0
+    drag_coeff_xy: float = 0.0
+    drag_coeff_z: float = 0.0
+    k_angvel: tuple[float, float, float] = (6.0, 6.0, 2.5)
+    max_body_rates: tuple[float, float, float] = (3.14, 3.14, 3.14)
     solver_type: str = "semi_implicit"
     n_substeps: int = 1
+
+
+VALID_CONTROL_MODES = {"motor_thrust", "body_rate"}
+
+
+def motor_thrust_to_body_wrench(
+    thrusts: torch.Tensor,
+    *,
+    arm_length: float,
+    torque_coeff: float,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Convert per-rotor thrusts to body-frame force and torque."""
+
+    d = arm_length / math.sqrt(2.0)
+    body_force = torch.zeros(thrusts.shape[0], 3, device=thrusts.device, dtype=thrusts.dtype)
+    body_force[:, 2] = thrusts.sum(dim=-1)
+    body_torque = torch.stack(
+        (
+            d * (thrusts[:, 0] + thrusts[:, 3] - thrusts[:, 1] - thrusts[:, 2]),
+            d * (-thrusts[:, 0] - thrusts[:, 3] + thrusts[:, 1] + thrusts[:, 2]),
+            torque_coeff * (thrusts[:, 0] + thrusts[:, 2] - thrusts[:, 1] - thrusts[:, 3]),
+        ),
+        dim=-1,
+    )
+    return body_force, body_torque
+
+
+def compute_linear_drag_force(
+    orientation_wxyz: torch.Tensor,
+    linear_velocity_world: torch.Tensor,
+    *,
+    drag_coeff_xy: float,
+    drag_coeff_z: float,
+) -> torch.Tensor:
+    """Return world-frame drag force opposing the current linear velocity."""
+
+    rotmat_b2w = quaternion_to_matrix(orientation_wxyz)
+    vel_b = torch.bmm(rotmat_b2w.transpose(-1, -2), linear_velocity_world.unsqueeze(-1)).squeeze(-1)
+    drag_diag = torch.tensor(
+        [drag_coeff_xy, drag_coeff_xy, drag_coeff_z],
+        device=linear_velocity_world.device,
+        dtype=linear_velocity_world.dtype,
+    )
+    drag_b = -drag_diag * vel_b
+    return torch.bmm(rotmat_b2w, drag_b.unsqueeze(-1)).squeeze(-1)
 
 
 class Drone:
@@ -177,6 +261,8 @@ class Drone:
 
     def __init__(self, config: DroneConfig, device: str = "cpu"):
         self.config = config
+        if config.control_mode not in VALID_CONTROL_MODES:
+            raise ValueError(f"Unsupported quadrotor control mode: {config.control_mode}")
         self.num_envs = config.num_envs
         self.device = torch.device(device)
         self.wp_device = wp.get_device(str(self.device))
@@ -197,11 +283,25 @@ class Drone:
         self.model = builder.finalize(requires_grad=config.requires_grad, device=self.wp_device)
         self.solver = newton.solvers.SolverSemiImplicit(self.model)
         self.arm_length = config.arm_length
-        self.ct = 0.01
-        self.max_thrust = 20.0
+        self.torque_coeff = config.torque_coeff
+        self.max_thrust = config.max_thrust
+        self.drag_coeff_xy = config.drag_coeff_xy
+        self.drag_coeff_z = config.drag_coeff_z
+        self.inertia = torch.diag(
+            torch.tensor(config.inertia, device=self.device, dtype=torch.float32)
+        ).unsqueeze(0).repeat(self.num_envs, 1, 1)
+        self.rate_controller = RateController(
+            self.inertia,
+            RateControllerConfig(
+                k_angvel=config.k_angvel,
+                max_body_rates=config.max_body_rates,
+            ),
+            device=self.device,
+        )
 
         self._state_tensor = torch.zeros(self.num_envs, 13, dtype=torch.float32, device=self.device)
         self._control_tensor = torch.zeros(self.num_envs, 4, dtype=torch.float32, device=self.device)
+        self._control_mode = config.control_mode
         self.reset_states()
 
     @property
@@ -209,7 +309,7 @@ class Drone:
         return self._state_tensor
 
     def set_state(self, new_state_tensor: torch.Tensor):
-        self._state_tensor = new_state_tensor.to(self.device)
+        self._state_tensor = new_state_tensor.to(self.device, dtype=torch.float32)
 
     def reset_states(self, positions: Optional[torch.Tensor] = None, env_ids: Optional[torch.Tensor] = None):
         if positions is None:
@@ -228,17 +328,40 @@ class Drone:
         new_state[env_ids, 10:13] = 0.0
         self._state_tensor = new_state
 
-    def apply_control(self, thrust_normalized: torch.Tensor):
-        self._control_tensor = thrust_normalized.to(self.device, dtype=torch.float32) * self.max_thrust
+    def _resolve_body_wrench(
+        self,
+        state: torch.Tensor,
+        control: torch.Tensor,
+        control_mode: str,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        if control_mode == "motor_thrust":
+            thrusts = control * self.max_thrust
+            return motor_thrust_to_body_wrench(
+                thrusts,
+                arm_length=self.arm_length,
+                torque_coeff=self.torque_coeff,
+            )
+        if control_mode == "body_rate":
+            return self.rate_controller(
+                state[:, 3:7],
+                state[:, 10:13],
+                control,
+                max_collective_thrust=self.max_thrust * 4.0,
+            )
+        raise ValueError(f"Unsupported quadrotor control mode: {control_mode}")
+
+    def apply_control(self, control: torch.Tensor, control_mode: Optional[str] = None):
+        self._control_tensor = control.to(self.device, dtype=torch.float32)
+        self._control_mode = control_mode or self.config.control_mode
 
     def integrate(self, dt: Optional[float] = None):
         dt = dt or self.config.dt
         sub_dt = dt / self.config.n_substeps
 
         state = self._state_tensor
-        controls = self._control_tensor
         for _ in range(self.config.n_substeps):
-            state = _NewtonStepFn.apply(self, state, controls, float(sub_dt))
+            body_force_b, body_torque_b = self._resolve_body_wrench(state, self._control_tensor, self._control_mode)
+            state = _NewtonStepFn.apply(self, state, body_force_b, body_torque_b, float(sub_dt))
         self._state_tensor = state
 
     def get_state(self) -> dict[str, torch.Tensor]:
