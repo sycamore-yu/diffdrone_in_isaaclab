@@ -11,7 +11,7 @@ import newton.solvers
 import torch
 import warp as wp
 
-from diffaero_newton.common.constants import ARM_LENGTH, DEFAULT_DT, IXX, IYY, IZZ, QUADROTOR_MASS
+from diffaero_newton.common.constants import ARM_LENGTH, DEFAULT_DT, GRAVITY, IXX, IYY, IZZ, QUADROTOR_MASS
 from diffaero_newton.dynamics.rate_controller import RateController, RateControllerConfig, quaternion_to_matrix
 
 wp.init()
@@ -192,7 +192,7 @@ class _NewtonStepFn(torch.autograd.Function):
 @dataclass
 class DroneConfig:
     """Configuration for the drone dynamics."""
-    
+
     num_envs: int = 1
     dt: float = DEFAULT_DT
     requires_grad: bool = False
@@ -204,14 +204,15 @@ class DroneConfig:
     max_thrust: float = 20.0
     drag_coeff_xy: float = 0.0
     drag_coeff_z: float = 0.0
+    gravity: float = GRAVITY
     k_angvel: tuple[float, float, float] = (6.0, 6.0, 2.5)
+    min_body_rates: tuple[float, float, float] = (-3.14, -3.14, -3.14)
     max_body_rates: tuple[float, float, float] = (3.14, 3.14, 3.14)
+    min_normed_thrust: float = 0.0
+    max_normed_thrust: float = 5.0
+    compensate_gravity: bool = False
     solver_type: str = "semi_implicit"
     n_substeps: int = 1
-    # Control mode: "motor_thrust" (default) or "rate_controller"
-    control_mode: str = "motor_thrust"
-    # Rate controller gains
-    K_angvel: tuple[float, float, float] = (1.0, 1.0, 0.5)
     torque_ratio: float = 1.0
     thrust_ratio: float = 1.0
 
@@ -299,7 +300,15 @@ class Drone:
             self.inertia,
             RateControllerConfig(
                 k_angvel=config.k_angvel,
+                min_body_rates=config.min_body_rates,
                 max_body_rates=config.max_body_rates,
+                min_normed_thrust=config.min_normed_thrust,
+                max_normed_thrust=config.max_normed_thrust,
+                thrust_ratio=config.thrust_ratio,
+                torque_ratio=config.torque_ratio,
+                mass=config.mass,
+                gravity=config.gravity,
+                compensate_gravity=config.compensate_gravity,
             ),
             device=self.device,
         )
@@ -351,7 +360,6 @@ class Drone:
                 state[:, 3:7],
                 state[:, 10:13],
                 control,
-                max_collective_thrust=self.max_thrust * 4.0,
             )
         raise ValueError(f"Unsupported quadrotor control mode: {control_mode}")
 

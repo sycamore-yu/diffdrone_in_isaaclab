@@ -23,6 +23,7 @@ class ObstacleAvoidanceEnvCfg(DroneEnvCfg):
             super().__post_init__()
         if isinstance(self.sensor_cfg, RelposSensorCfg):
             self.sensor_cfg.n_obstacles = self.num_obstacles
+        self.num_states = 21
         self.num_observations = 21 + sensor_observation_dim(self.sensor_cfg)
         self.observation_space = Box(
             low=-np.inf,

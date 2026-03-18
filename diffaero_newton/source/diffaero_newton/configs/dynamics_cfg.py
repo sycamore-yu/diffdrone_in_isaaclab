@@ -32,8 +32,15 @@ class QuadrotorCfg(DynamicsCfg):
     max_thrust: float = 20.0
     drag_coeff_xy: float = 0.0
     drag_coeff_z: float = 0.0
+    gravity: float = 9.81
     k_angvel: tuple[float, float, float] = (6.0, 6.0, 2.5)
+    min_body_rates: tuple[float, float, float] = (-3.14, -3.14, -3.14)
     max_body_rates: tuple[float, float, float] = (3.14, 3.14, 3.14)
+    min_normed_thrust: float = 0.0
+    max_normed_thrust: float = 5.0
+    compensate_gravity: bool = False
+    torque_ratio: float = 1.0
+    thrust_ratio: float = 1.0
     solver_type: str = "semi_implicit"
     n_substeps: int = 1
 

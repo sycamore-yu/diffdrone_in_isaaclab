@@ -12,7 +12,15 @@ class RateControllerConfig:
     """Configuration for the DiffAero-style body-rate controller."""
 
     k_angvel: tuple[float, float, float] = (6.0, 6.0, 2.5)
+    min_body_rates: tuple[float, float, float] = (-3.14, -3.14, -3.14)
     max_body_rates: tuple[float, float, float] = (3.14, 3.14, 3.14)
+    min_normed_thrust: float = 0.0
+    max_normed_thrust: float = 5.0
+    thrust_ratio: float = 1.0
+    torque_ratio: float = 1.0
+    mass: float = 1.0
+    gravity: float = 9.81
+    compensate_gravity: bool = False
     gyro_cross_limit: float = 100.0
 
 
@@ -52,7 +60,9 @@ class RateController:
         self.device = device
         self.inertia = inertia.to(device=device, dtype=torch.float32)
         self.k_angvel = torch.tensor(self.cfg.k_angvel, device=device, dtype=torch.float32)
+        self.min_body_rates = torch.tensor(self.cfg.min_body_rates, device=device, dtype=torch.float32)
         self.max_body_rates = torch.tensor(self.cfg.max_body_rates, device=device, dtype=torch.float32)
+        self.body_rate_range = self.max_body_rates - self.min_body_rates
 
     def compute_torque(
         self,
@@ -72,7 +82,7 @@ class RateController:
         gyro_scale = (gyro_cross.norm(dim=-1, keepdim=True) / self.cfg.gyro_cross_limit).clamp_min(1.0)
         gyro_cross = gyro_cross / gyro_scale.detach()
 
-        angacc = self.k_angvel * angvel_err
+        angacc = self.cfg.torque_ratio * self.k_angvel * angvel_err
         return torch.bmm(self.inertia, angacc.unsqueeze(-1)).squeeze(-1) + gyro_cross
 
     def __call__(
@@ -80,14 +90,18 @@ class RateController:
         orientation_wxyz: torch.Tensor,
         angular_velocity_world: torch.Tensor,
         action: torch.Tensor,
-        *,
-        max_collective_thrust: float,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Map normalized `[collective, body_rate_xyz]` commands to body-frame wrench."""
 
-        thrust = action[:, 0].clamp_min(0.0) * max_collective_thrust
-        desired_angvel_body = (action[:, 1:].clamp(0.0, 1.0) * 2.0 - 1.0) * self.max_body_rates
+        collective = self.cfg.min_normed_thrust + action[:, 0].clamp(0.0, 1.0) * (
+            self.cfg.max_normed_thrust - self.cfg.min_normed_thrust
+        )
+        desired_angvel_body = self.min_body_rates + action[:, 1:].clamp(0.0, 1.0) * self.body_rate_range
         torque = self.compute_torque(orientation_wxyz, angular_velocity_world, desired_angvel_body)
+        thrust = collective * self.cfg.thrust_ratio
+        if self.cfg.compensate_gravity:
+            thrust = thrust + 1.0
+        thrust = thrust * self.cfg.gravity * self.cfg.mass
 
         body_force = torch.zeros(action.shape[0], 3, device=action.device, dtype=action.dtype)
         body_force[:, 2] = thrust

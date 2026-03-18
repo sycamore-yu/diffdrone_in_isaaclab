@@ -118,6 +118,41 @@ class TestObstacleEnvironment:
         finally:
             env.close()
 
+    @pytest.mark.cpu_smoke
+    def test_camera_sensor_observation_changes_with_drone_orientation(self) -> None:
+        """Obstacle sensor observations must use the drone's current orientation."""
+        from diffaero_newton.configs.dynamics_cfg import QuadrotorCfg
+        from diffaero_newton.configs.obstacle_env_cfg import ObstacleAvoidanceEnvCfg
+        from diffaero_newton.configs.sensor_cfg import CameraSensorCfg
+        from diffaero_newton.envs.obstacle_env import ObstacleAvoidanceEnv
+
+        cfg = ObstacleAvoidanceEnvCfg(num_envs=1, num_obstacles=1)
+        cfg.sensor_cfg = CameraSensorCfg(height=9, width=9, horizontal_fov=90.0, max_dist=10.0)
+        cfg.__post_init__()
+        cfg.dynamics = QuadrotorCfg(num_envs=1, requires_grad=True)
+        env = ObstacleAvoidanceEnv(cfg=cfg, device="cpu")
+
+        try:
+            env.reset()
+            env.obstacle_manager.obstacles.zero_()
+            env.obstacle_manager.obstacles[0, 0, :3] = torch.tensor([4.0, 0.0, 1.0], device=env.device)
+            env.obstacle_manager.obstacles[0, 0, 3] = 1.0
+
+            state = env.drone.get_flat_state().detach().clone()
+            state[:, :3] = torch.tensor([0.0, 0.0, 1.0], device=env.device)
+            state[:, 3:7] = torch.tensor([1.0, 0.0, 0.0, 0.0], device=env.device)
+            env.drone.set_state(state)
+            obs_identity = env._get_observations()["policy"][:, -env.sensor_obs_dim :].clone()
+
+            yaw_half_turn = torch.tensor([0.70710678, 0.0, 0.0, 0.70710678], device=env.device)
+            state[:, 3:7] = yaw_half_turn
+            env.drone.set_state(state)
+            obs_rotated = env._get_observations()["policy"][:, -env.sensor_obs_dim :]
+
+            assert not torch.allclose(obs_identity, obs_rotated)
+        finally:
+            env.close()
+
     def test_goal_tracking_reward(self, device, num_envs):
         """Test that reward increases when moving toward goal."""
         from diffaero_newton.envs.drone_env import DroneEnv
