@@ -13,8 +13,14 @@
 {"created_at":"2026-03-16T19:46:15Z","created_by":"sycamore-yu","depends_on_id":"diffdroneinisaac_workspace-i8x","issue_id":"diffdroneinisaac_workspace-i8x.15","type":"parent-child"}
 {"created_at":"2026-03-16T19:46:25Z","created_by":"sycamore-yu","depends_on_id":"diffdroneinisaac_workspace-i8x","issue_id":"diffdroneinisaac_workspace-i8x.16","type":"parent-child"}
 {"created_at":"2026-03-18T11:35:03Z","created_by":"sycamore-yu","depends_on_id":"diffdroneinisaac_workspace-i8x","issue_id":"diffdroneinisaac_workspace-i8x.17","type":"parent-child"}
+{"created_at":"2026-03-18T11:35:03Z","created_by":"sycamore-yu","depends_on_id":"diffdroneinisaac_workspace-i8x.16","issue_id":"diffdroneinisaac_workspace-i8x.17","type":"discovered-from"}
 {"created_at":"2026-03-18T11:35:03Z","created_by":"sycamore-yu","depends_on_id":"diffdroneinisaac_workspace-i8x","issue_id":"diffdroneinisaac_workspace-i8x.18","type":"parent-child"}
+{"created_at":"2026-03-18T11:35:03Z","created_by":"sycamore-yu","depends_on_id":"diffdroneinisaac_workspace-i8x","issue_id":"diffdroneinisaac_workspace-i8x.19","type":"parent-child"}
 {"created_at":"2026-03-12T11:20:31Z","created_by":"sycamore-yu","depends_on_id":"diffdroneinisaac_workspace-i8x","issue_id":"diffdroneinisaac_workspace-i8x.2","type":"parent-child"}
+{"created_at":"2026-03-18T11:35:17Z","created_by":"sycamore-yu","depends_on_id":"diffdroneinisaac_workspace-i8x","issue_id":"diffdroneinisaac_workspace-i8x.20","type":"parent-child"}
+{"created_at":"2026-03-18T11:35:17Z","created_by":"sycamore-yu","depends_on_id":"diffdroneinisaac_workspace-i8x.15","issue_id":"diffdroneinisaac_workspace-i8x.20","type":"discovered-from"}
+{"created_at":"2026-03-18T11:35:24Z","created_by":"sycamore-yu","depends_on_id":"diffdroneinisaac_workspace-i8x","issue_id":"diffdroneinisaac_workspace-i8x.21","type":"parent-child"}
+{"created_at":"2026-03-18T11:35:54Z","created_by":"sycamore-yu","depends_on_id":"diffdroneinisaac_workspace-i8x","issue_id":"diffdroneinisaac_workspace-i8x.22","type":"parent-child"}
 {"created_at":"2026-03-12T11:20:37Z","created_by":"sycamore-yu","depends_on_id":"diffdroneinisaac_workspace-i8x","issue_id":"diffdroneinisaac_workspace-i8x.3","type":"parent-child"}
 {"created_at":"2026-03-12T11:20:43Z","created_by":"sycamore-yu","depends_on_id":"diffdroneinisaac_workspace-i8x","issue_id":"diffdroneinisaac_workspace-i8x.4","type":"parent-child"}
 {"created_at":"2026-03-12T11:20:51Z","created_by":"sycamore-yu","depends_on_id":"diffdroneinisaac_workspace-i8x","issue_id":"diffdroneinisaac_workspace-i8x.5","type":"parent-child"}
