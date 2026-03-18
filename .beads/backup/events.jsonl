@@ -117,3 +117,5 @@
 {"actor":"sycamore-yu","comment":null,"created_at":"2026-03-18T11:35:17Z","event_type":"created","id":120,"issue_id":"diffdroneinisaac_workspace-i8x.20","new_value":"","old_value":""}
 {"actor":"sycamore-yu","comment":null,"created_at":"2026-03-18T11:35:24Z","event_type":"created","id":121,"issue_id":"diffdroneinisaac_workspace-i8x.21","new_value":"","old_value":""}
 {"actor":"sycamore-yu","comment":null,"created_at":"2026-03-18T11:35:54Z","event_type":"created","id":122,"issue_id":"diffdroneinisaac_workspace-i8x.22","new_value":"","old_value":""}
+{"actor":"sycamore-yu","comment":null,"created_at":"2026-03-18T12:35:03Z","event_type":"closed","id":123,"issue_id":"diffdroneinisaac_workspace-i8x.17","new_value":"Fixed: removed action_frame from DroneConfig call in registry.py, test_train_entry.py now passes 7/7, docs/progress.md updated","old_value":""}
+{"actor":"sycamore-yu","comment":null,"created_at":"2026-03-18T12:39:46Z","event_type":"closed","id":124,"issue_id":"diffdroneinisaac_workspace-i8x.9","new_value":"MASHAC tests pass (3/3), code merged to main","old_value":""}
