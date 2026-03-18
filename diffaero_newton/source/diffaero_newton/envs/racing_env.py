@@ -9,6 +9,7 @@ import torch
 from torch import Tensor
 
 from diffaero_newton.configs.racing_env_cfg import RacingEnvCfg
+from diffaero_newton.configs.dynamics_cfg import is_pointmass_model_type
 from diffaero_newton.envs.drone_env import DroneEnv
 
 
@@ -140,13 +141,7 @@ class RacingEnv(DroneEnv):
         options: Dict[str, Any] | None = None,
     ) -> Tuple[Dict[str, Tensor], Dict[str, Any]]:
         obs, extras = super().reset(seed=seed, options=options)
-        self.target_gates.zero_()
-        self.n_passed_gates.zero_()
-        self.last_gate_passed.zero_()
-        self.last_gate_collision.zero_()
-        self.last_oob.zero_()
-        self.last_reward.zero_()
-        self.last_loss.zero_()
+        self._reset_racing_state(torch.arange(self.num_envs, device=self.device))
         return self._get_observations(), extras
 
     def _reset_idx(self, env_ids):
@@ -154,13 +149,35 @@ class RacingEnv(DroneEnv):
         if len(env_ids) == 0:
             return
         env_ids_tensor = torch.as_tensor(env_ids, dtype=torch.long, device=self.device)
-        self.target_gates[env_ids_tensor] = 0
-        self.n_passed_gates[env_ids_tensor] = 0
-        self.last_gate_passed[env_ids_tensor] = False
-        self.last_gate_collision[env_ids_tensor] = False
-        self.last_oob[env_ids_tensor] = False
-        self.last_reward[env_ids_tensor] = 0.0
-        self.last_loss[env_ids_tensor] = 0.0
+        self._reset_racing_state(env_ids_tensor)
+
+    def _reset_racing_state(self, env_ids: Tensor) -> None:
+        """Align reset semantics with the reference racing task."""
+
+        if env_ids.numel() == 0:
+            return
+
+        target_gates = torch.randint(0, self.n_gates, (env_ids.numel(),), device=self.device)
+        gate_pos = self.gate_pos[target_gates]
+        gate_yaw = self.gate_yaw[target_gates]
+        forward = torch.stack(
+            (
+                torch.cos(gate_yaw),
+                torch.sin(gate_yaw),
+                torch.zeros_like(gate_yaw),
+            ),
+            dim=-1,
+        )
+        start_pos = gate_pos - forward
+
+        self.target_gates[env_ids] = target_gates
+        self.n_passed_gates[env_ids] = 0
+        self.last_gate_passed[env_ids] = False
+        self.last_gate_collision[env_ids] = False
+        self.last_oob[env_ids] = False
+        self.last_reward[env_ids] = 0.0
+        self.last_loss[env_ids] = 0.0
+        self.drone.reset_states(start_pos, env_ids=env_ids)
 
     def _current_gate_frame(self) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
         gate_pos = self.gate_pos[self.target_gates]
@@ -171,35 +188,50 @@ class RacingEnv(DroneEnv):
         vel_g = torch.bmm(rotmat_w2g, drone_state["velocity"].unsqueeze(-1)).squeeze(-1)
         return gate_pos, gate_yaw, rel_pos, vel_g
 
+    def _compute_velocity_loss(self, vel_g: Tensor) -> Tensor:
+        lateral_vel_loss = torch.sum(vel_g[:, 1:] ** 2, dim=-1)
+        if not self.racing_cfg.use_vel_track:
+            forward_shortfall = torch.clamp(self.racing_cfg.min_target_vel - vel_g[:, 0], min=0.0)
+            return lateral_vel_loss + forward_shortfall.pow(2)
+
+        target_forward_vel = 0.5 * (self.racing_cfg.min_target_vel + self.racing_cfg.max_target_vel)
+        forward_error = vel_g[:, 0] - target_forward_vel
+        return lateral_vel_loss + forward_error.pow(2)
+
     def _compute_step_terms(self, prev_gate_dist: Tensor) -> Tuple[Tensor, Tensor]:
         _, _, rel_pos, vel_g = self._current_gate_frame()
         gate_dist = torch.linalg.vector_norm(rel_pos, dim=-1)
-        lateral_dist = torch.linalg.vector_norm(rel_pos[:, 1:], dim=-1)
-        progress = (prev_gate_dist - gate_dist).clamp(min=-2.0, max=2.0)
+        progress_loss = (gate_dist - prev_gate_dist.detach()).clamp(min=-2.0, max=2.0)
+        pos_loss = 1.0 - torch.exp(-gate_dist)
         jerk = torch.sum((self.actions - self.prev_actions) ** 2, dim=-1)
-        vel_loss = torch.sum(vel_g ** 2, dim=-1)
+        vel_loss = self._compute_velocity_loss(vel_g)
 
         pass_bonus = self.last_gate_passed.float() * self.racing_cfg.reward_pass
         collision_penalty = self.last_gate_collision.float() * self.racing_cfg.reward_collision
         oob_penalty = self.last_oob.float() * self.racing_cfg.reward_oob
+        collision_loss = self.last_gate_collision.float() * self.racing_cfg.collision_loss_weight
+        oob_loss = self.last_oob.float() * self.racing_cfg.oob_loss_weight
 
         reward = (
             self.racing_cfg.reward_constant
-            + self.racing_cfg.reward_progress * progress
+            - self.racing_cfg.reward_progress * progress_loss
+            - self.racing_cfg.pos_loss_weight * pos_loss
+            - self.racing_cfg.vel_loss_weight * vel_loss
+            - self.racing_cfg.jerk_loss_weight * jerk
             + pass_bonus
             - collision_penalty
             - oob_penalty
-        )
+        ).detach()
         loss = (
-            self.racing_cfg.progress_loss_weight * gate_dist
-            + self.racing_cfg.pos_loss_weight * lateral_dist
+            self.racing_cfg.progress_loss_weight * progress_loss
+            + self.racing_cfg.pos_loss_weight * pos_loss
             + self.racing_cfg.vel_loss_weight * vel_loss
             + self.racing_cfg.jerk_loss_weight * jerk
-            + self.last_gate_collision.float() * self.racing_cfg.collision_loss_weight
-            + self.last_oob.float() * self.racing_cfg.oob_loss_weight
-            - self.last_gate_passed.float() * self.racing_cfg.reward_pass
+            + collision_loss
+            + oob_loss
+            - pass_bonus
         )
-        return reward.detach(), loss
+        return reward, loss
 
     def step(
         self,
@@ -259,3 +291,15 @@ class RacingEnv(DroneEnv):
             "next_state_before_reset": state_before_reset.clone(),
         }
         return returned_obs, self.drone.get_flat_state(), loss, reward, extras
+
+    def _apply_action(self) -> None:
+        if is_pointmass_model_type(self.cfg.dynamics.model_type):
+            gate_yaw = self.gate_yaw[self.target_gates]
+            rotmat_w2g = get_gate_rotmat_w2g(gate_yaw)
+            acc_gate = self.drone.normalized_action_to_acceleration(self.actions)
+            acc_world = torch.bmm(rotmat_w2g.transpose(-1, -2), acc_gate.unsqueeze(-1)).squeeze(-1)
+            self.drone.apply_acceleration_command(acc_world)
+            self.drone.integrate(self.physics_dt)
+            return
+
+        super()._apply_action()

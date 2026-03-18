@@ -27,6 +27,13 @@ class QuadrotorCfg(DynamicsCfg):
     arm_length: float = 0.04
     mass: float = 0.027
     inertia: tuple[float, float, float] = (1.4e-5, 1.4e-5, 2.17e-5)
+    control_mode: str = "motor_thrust"
+    torque_coeff: float = 0.01
+    max_thrust: float = 20.0
+    drag_coeff_xy: float = 0.0
+    drag_coeff_z: float = 0.0
+    k_angvel: tuple[float, float, float] = (6.0, 6.0, 2.5)
+    max_body_rates: tuple[float, float, float] = (3.14, 3.14, 3.14)
     solver_type: str = "semi_implicit"
     n_substeps: int = 1
 
@@ -37,6 +44,8 @@ class PointMassCfg(DynamicsCfg):
     model_type: str = "pointmass"
     mass: float = 1.0
     drag_coeff: float = 0.1
+    max_acc_xy: float = 20.0
+    max_acc_z: float = 40.0
     solver_type: str = "semi_implicit"
     n_substeps: int = 1
 
@@ -48,6 +57,8 @@ class ContinuousPointMassCfg(DynamicsCfg):
     model_type: str = "continuous_pointmass"
     mass: float = 1.0
     drag_coeff: float = 0.1
+    max_acc_xy: float = 20.0
+    max_acc_z: float = 40.0
     solver_type: str = "semi_implicit"
     n_substeps: int = 1
 
@@ -59,6 +70,8 @@ class DiscretePointMassCfg(DynamicsCfg):
     model_type: str = "discrete_pointmass"
     mass: float = 1.0
     drag_coeff: float = 0.1
+    max_acc_xy: float = 20.0
+    max_acc_z: float = 40.0
     solver_type: str = "semi_implicit"
     n_substeps: int = 1
     action_frame: str = "world"
