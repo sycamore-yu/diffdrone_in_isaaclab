@@ -60,7 +60,7 @@ This document serves as the ground truth for the current actual migration status
 - quaternion_rotate 系列 math utilities 未完整移植
 
 ### Algorithm Gaps
-- SHA2C 未迁移到 main
+- (All major algorithms from reference/diffaero 已迁移)
 
 ## Validation & Commands
 Passing checks currently verified on `main`:
