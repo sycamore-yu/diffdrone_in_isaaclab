@@ -1,0 +1,85 @@
+{
+  "critical_files": [
+    "docs/development.md",
+    "docs/progress.md",
+    "docs/regression_matrix.md",
+    "diffaero_newton/source/diffaero_newton/scripts/train.py",
+    "diffaero_newton/source/diffaero_newton/scripts/registry.py",
+    "diffaero_newton/source/diffaero_newton/dynamics/drone_dynamics.py",
+    "diffaero_newton/source/diffaero_newton/dynamics/registry.py",
+    "diffaero_newton/source/diffaero_newton/envs/obstacle_env.py",
+    "diffaero_newton/source/diffaero_newton/envs/sensors.py",
+    "diffaero_newton/source/diffaero_newton/training/dreamerv3/world.py",
+    "diffaero_newton/tests/test_train_entry.py",
+    "diffaero_newton/tests/test_drone_dynamics.py",
+    "diffaero_newton/tests/test_world_training.py",
+    "diffaero_newton/tests/test_obstacle_training.py"
+  ],
+  "patterns": [
+    "Registry-first public assembly via scripts/registry.py",
+    "Validation tiers: runtime_preflight, cpu_smoke, gpu_smoke",
+    "Config-first design with IsaacLab-style config classes",
+    "Differentiable loss terms separate from detached reward bookkeeping",
+    "Per-task closure loop: code -> isaaclab-newton test -> ai-first review -> docs update -> commit"
+  ],
+  "dependencies": [
+    "isaaclab-newton conda environment",
+    "Root reference repos under /home/tong/tongworkspace/diffdroneinisaac_workspace/reference",
+    "Warp/Newton differentiable runtime",
+    "IsaacLab launch/runtime boundary"
+  ],
+  "integration_points": [
+    {
+      "module": "registry",
+      "files": [
+        "diffaero_newton/source/diffaero_newton/scripts/registry.py",
+        "diffaero_newton/source/diffaero_newton/scripts/train.py"
+      ]
+    },
+    {
+      "module": "quadrotor",
+      "files": [
+        "diffaero_newton/source/diffaero_newton/dynamics/drone_dynamics.py",
+        "diffaero_newton/source/diffaero_newton/dynamics/rate_controller.py",
+        "diffaero_newton/source/diffaero_newton/configs/dynamics_cfg.py"
+      ]
+    },
+    {
+      "module": "obstacle_sensor",
+      "files": [
+        "diffaero_newton/source/diffaero_newton/envs/obstacle_env.py",
+        "diffaero_newton/source/diffaero_newton/envs/sensors.py",
+        "diffaero_newton/source/diffaero_newton/tasks/obstacle_manager.py",
+        "diffaero_newton/source/diffaero_newton/configs/sensor_cfg.py"
+      ]
+    },
+    {
+      "module": "world",
+      "files": [
+        "diffaero_newton/source/diffaero_newton/training/dreamerv3/world.py",
+        "diffaero_newton/source/diffaero_newton/training/dreamerv3/models/state_predictor.py",
+        "diffaero_newton/tests/test_world_training.py"
+      ]
+    },
+    {
+      "module": "tooling",
+      "files": [
+        "diffaero_newton/source/diffaero_newton/scripts",
+        "docs/progress.md",
+        "docs/regression_matrix.md"
+      ]
+    }
+  ],
+  "conflict_risk": "high",
+  "conflict_areas": [
+    "Cross-cutting changes across registry, training, dynamics, envs, tests, and docs",
+    "Potential mismatch between existing docs truth and actual merged-main behavior",
+    "Reference repos are only available from the root workspace, not the new worktree relative paths"
+  ],
+  "constraints": [
+    "Keep runtime split explicit and avoid new fallback layers",
+    "Every new top-level capability must be exercisable through scripts/train.py",
+    "Do not claim migration complete without isaaclab-newton command evidence",
+    "Use root absolute reference paths when comparing against reference/diffaero, reference/newton, and reference/IsaacLab"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "task_ids": [
+    "IMPL-1",
+    "IMPL-2",
+    "IMPL-3",
+    "IMPL-4",
+    "IMPL-5",
+    "IMPL-6",
+    "IMPL-7"
+  ],
+  "recommended_execution": "sequential",
+  "complexity": "high",
+  "shared_context": {
+    "worktree": "/home/tong/tongworkspace/diffdroneinisaac_workspace/.wt/final-migration-delivery",
+    "reference_root": "/home/tong/tongworkspace/diffdroneinisaac_workspace/reference",
+    "primary_docs": [
+      "docs/development.md",
+      "docs/progress.md",
+      "docs/regression_matrix.md"
+    ],
+    "quality_contract": [
+      "runtime_preflight coverage for registry/CLI/runtime changes",
+      "cpu_smoke coverage for env/observation/reset changes",
+      "gpu_smoke coverage for differentiable rollout/training changes",
+      "ai-first-engineering review before each task is considered closed"
+    ]
+  }
+}

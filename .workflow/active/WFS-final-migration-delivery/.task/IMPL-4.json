@@ -1,0 +1,27 @@
+{
+  "id": "IMPL-4",
+  "title": "Expand or explicitly narrow obstacle/sensor parity",
+  "description": "Bring the obstacle/sensor stack closer to DiffAero where feasible, and explicitly de-scope what cannot be completed in this branch.",
+  "depends_on": [
+    "IMPL-1"
+  ],
+  "acceptance": [
+    "Obstacle/sensor support matrix is explicit in code and docs",
+    "conda run -n isaaclab-newton pytest diffaero_newton/tests/test_obstacle_training.py -q passes",
+    "New or updated tests cover any changed obstacle/state/sensor contract",
+    "Deferred parity items are named explicitly instead of implied"
+  ],
+  "review_focus": [
+    "Observation contract stability",
+    "Reset/randomization correctness",
+    "No divergence between sensor implementation and documented task semantics"
+  ],
+  "docs_required": [
+    "docs/progress.md",
+    "docs/regression_matrix.md"
+  ],
+  "meta": {
+    "type": "environment-sensor",
+    "agent": "codex"
+  }
+}

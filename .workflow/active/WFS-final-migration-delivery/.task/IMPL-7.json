@@ -1,0 +1,33 @@
+{
+  "id": "IMPL-7",
+  "title": "Final delivery gate and PR prep",
+  "description": "Run the final regression set, perform an AI-first review pass, finalize docs, and prepare one PR from the worktree branch.",
+  "depends_on": [
+    "IMPL-2",
+    "IMPL-3",
+    "IMPL-4",
+    "IMPL-5",
+    "IMPL-6"
+  ],
+  "acceptance": [
+    "Touched runtime_preflight, cpu_smoke, and gpu_smoke coverage is re-run or explicitly documented if blocked",
+    "AI-first review notes exist and call out regression checks",
+    "Docs and actual test results agree",
+    "Exactly one PR is created from feature/final-migration-delivery"
+  ],
+  "review_focus": [
+    "Behavior regressions",
+    "Contract drift",
+    "Failure handling and rollout safety",
+    "Evidence quality vs anecdotal confidence"
+  ],
+  "docs_required": [
+    "docs/progress.md",
+    "docs/regression_matrix.md",
+    "docs/README.md"
+  ],
+  "meta": {
+    "type": "release",
+    "agent": "codex"
+  }
+}

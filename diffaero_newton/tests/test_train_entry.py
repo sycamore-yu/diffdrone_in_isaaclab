@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import json
 import subprocess
 import sys
 import types
@@ -27,6 +28,7 @@ def test_registry_points_to_real_modules():
     assert ENV_REGISTRY["sim2real_position_control"] == "diffaero_newton.envs.position_control_env.Sim2RealPositionControlEnv"
     assert ENV_REGISTRY["mapc"] == "diffaero_newton.envs.mapc_env.MAPCEnv"
     assert ALGO_REGISTRY["mashac"] == "diffaero_newton.training.mashac.MASHAC"
+    assert ALGO_REGISTRY["sha2c"] == "diffaero_newton.training.shac.SHA2C"
     assert DYNAMICS_REGISTRY["pointmass"] == "diffaero_newton.configs.dynamics_cfg.PointMassCfg"
     assert ALGO_REGISTRY["world"] == "diffaero_newton.training.dreamerv3.World_Agent"
     assert DYNAMICS_REGISTRY["continuous_pointmass"] == "diffaero_newton.configs.dynamics_cfg.ContinuousPointMassCfg"
@@ -46,8 +48,50 @@ def test_train_list_runs_without_pythonpath_hack():
 
     assert result.returncode == 0, result.stderr
     assert "Algorithms:" in result.stdout
+    assert "sha2c" in result.stdout
     assert "position_control" in result.stdout
     assert "sim2real_position_control" in result.stdout
+
+
+@pytest.mark.runtime_preflight
+def test_train_dry_run_writes_resolved_world_config(tmp_path):
+    config_path = tmp_path / "resolved-world-config.json"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(TRAIN_SCRIPT),
+            "--algo",
+            "world",
+            "--env",
+            "obstacle_avoidance",
+            "--dynamics",
+            "pointmass",
+            "--sensor",
+            "camera",
+            "--n_envs",
+            "1",
+            "--device",
+            "cpu",
+            "--dry-run",
+            "--config-out",
+            str(config_path),
+        ],
+        cwd=REPO_ROOT,
+        env=os.environ.copy(),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert config_path.exists()
+
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    assert payload["args"]["algo"] == "world"
+    assert payload["args"]["env"] == "obstacle_avoidance"
+    assert payload["world_cfg"]["state_predictor"]["use_perception"] is True
+    assert payload["world_cfg"]["state_predictor"]["only_state"] is False
+    assert payload["env_cfg"]["sensor_cfg"]["name"] == "camera"
 
 
 @pytest.mark.runtime_preflight
@@ -228,6 +272,8 @@ def test_build_env_applies_quadrotor_body_rate_overrides_end_to_end():
             "drag_coeff_z": 0.1,
             "k_angvel": (5.0, 4.0, 3.0),
             "max_body_rates": (3.0, 3.0, 1.5),
+            "thrust_ratio": 0.85,
+            "torque_ratio": 0.75,
         },
     )
 
@@ -240,6 +286,8 @@ def test_build_env_applies_quadrotor_body_rate_overrides_end_to_end():
         assert env.cfg.dynamics.control_mode == "body_rate"
         assert env.drone.config.control_mode == "body_rate"
         assert env.drone.config.max_body_rates == (3.0, 3.0, 1.5)
+        assert env.drone.config.thrust_ratio == pytest.approx(0.85)
+        assert env.drone.config.torque_ratio == pytest.approx(0.75)
         assert obs["policy"].shape[-1] == next_obs["policy"].shape[-1]
         assert torch.isfinite(loss_terms).all()
         assert torch.isfinite(reward).all()

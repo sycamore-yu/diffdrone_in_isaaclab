@@ -1,0 +1,7 @@
+- [x] IMPL-1: Re-baseline docs and validation gates
+- [x] IMPL-2: Migrate SHA2C into the unified entry
+- [x] IMPL-3: Close quadrotor semantic parity gap
+- [x] IMPL-4: Expand or explicitly narrow obstacle/sensor parity
+- [x] IMPL-5: Expand DreamerV3/world beyond the current state-only limit or formally de-scope it
+- [x] IMPL-6: Deliver minimal tooling parity
+- [ ] IMPL-7: Final delivery gate and PR prep

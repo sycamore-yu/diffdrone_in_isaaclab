@@ -37,6 +37,7 @@ def _reference_rate_torque(
     inertia: torch.Tensor,
     k_angvel: torch.Tensor,
     *,
+    torque_ratio: float,
     gyro_cross_limit: float,
 ) -> torch.Tensor:
     rotmat_b2w = quaternion_to_matrix(orientation_wxyz)
@@ -45,7 +46,7 @@ def _reference_rate_torque(
     inertia_omega = torch.bmm(inertia, actual_angvel_body.unsqueeze(-1)).squeeze(-1)
     gyro_cross = torch.cross(actual_angvel_body, inertia_omega, dim=-1)
     gyro_cross = gyro_cross / (gyro_cross.norm(dim=-1, keepdim=True) / gyro_cross_limit).clamp_min(1.0)
-    angacc = k_angvel * angvel_err
+    angacc = torque_ratio * k_angvel * angvel_err
     return torch.bmm(inertia, angacc.unsqueeze(-1)).squeeze(-1) + gyro_cross
 
 
@@ -67,12 +68,19 @@ def test_quaternion_to_matrix_matches_identity_and_half_turn() -> None:
 @pytest.mark.cpu_smoke
 def test_rate_controller_matches_reference_torque_equation() -> None:
     inertia = torch.diag(torch.tensor([0.02, 0.02, 0.04], dtype=torch.float32)).unsqueeze(0)
+    min_body_rates = torch.tensor([-3.0, -2.0, -1.0], dtype=torch.float32)
     max_body_rates = torch.tensor([3.0, 2.0, 1.0], dtype=torch.float32)
     controller = RateController(
         inertia,
         RateControllerConfig(
             k_angvel=(5.0, 4.0, 3.0),
+            min_body_rates=tuple(min_body_rates.tolist()),
             max_body_rates=tuple(max_body_rates.tolist()),
+            max_normed_thrust=5.0,
+            thrust_ratio=0.8,
+            torque_ratio=0.6,
+            mass=1.0,
+            gravity=9.81,
             gyro_cross_limit=100.0,
         ),
         device=torch.device("cpu"),
@@ -81,24 +89,20 @@ def test_rate_controller_matches_reference_torque_equation() -> None:
     orientation = torch.tensor([[0.9238795, 0.0, 0.3826834, 0.0]], dtype=torch.float32)
     omega_world = torch.tensor([[0.2, -0.1, 0.3]], dtype=torch.float32)
     action = torch.tensor([[0.6, 0.75, 0.25, 0.5]], dtype=torch.float32)
-    desired_angvel_body = (action[:, 1:] * 2.0 - 1.0) * max_body_rates.unsqueeze(0)
+    desired_angvel_body = min_body_rates.unsqueeze(0) + action[:, 1:] * (max_body_rates - min_body_rates).unsqueeze(0)
 
-    body_force, torque = controller(
-        orientation,
-        omega_world,
-        action,
-        max_collective_thrust=80.0,
-    )
+    body_force, torque = controller(orientation, omega_world, action)
     reference_torque = _reference_rate_torque(
         orientation,
         omega_world,
         desired_angvel_body,
         inertia,
         torch.tensor([5.0, 4.0, 3.0]),
+        torque_ratio=0.6,
         gyro_cross_limit=100.0,
     )
 
-    assert body_force[0, 2].item() == pytest.approx(48.0)
+    assert body_force[0, 2].item() == pytest.approx(0.6 * 5.0 * 0.8 * 9.81)
     assert torch.allclose(torque, reference_torque, atol=1.0e-6)
 
 
@@ -188,6 +192,43 @@ def test_drone_body_rate_control_changes_orientation_and_backprops() -> None:
     assert not torch.allclose(initial_orientation, final_orientation.detach(), atol=1.0e-4)
     assert actions.grad is not None
     assert torch.any(actions.grad.abs() > 0.0)
+
+
+@pytest.mark.cpu_smoke
+def test_drone_body_rate_config_applies_diffaero_scaling_semantics() -> None:
+    drone = Drone(
+        DroneConfig(
+            num_envs=1,
+            dt=0.01,
+            control_mode="body_rate",
+            mass=1.0,
+            gravity=9.81,
+            k_angvel=(5.0, 4.0, 3.0),
+            min_body_rates=(-3.0, -2.0, -1.0),
+            max_body_rates=(3.0, 2.0, 1.0),
+            min_normed_thrust=0.0,
+            max_normed_thrust=5.0,
+            thrust_ratio=0.8,
+            torque_ratio=0.6,
+        ),
+        device="cpu",
+    )
+    state = drone.get_flat_state().clone()
+    action = torch.tensor([[0.6, 0.75, 0.25, 0.5]], dtype=torch.float32)
+
+    body_force, body_torque = drone._resolve_body_wrench(state, action, "body_rate")
+    expected_torque = _reference_rate_torque(
+        state[:, 3:7],
+        state[:, 10:13],
+        torch.tensor([[1.5, -1.0, 0.0]], dtype=torch.float32),
+        torch.diag(torch.tensor([0.01, 0.01, 0.02], dtype=torch.float32)).unsqueeze(0),
+        torch.tensor([5.0, 4.0, 3.0], dtype=torch.float32),
+        torque_ratio=0.6,
+        gyro_cross_limit=100.0,
+    )
+
+    assert body_force[0, 2].item() == pytest.approx(0.6 * 5.0 * 0.8 * 9.81)
+    assert torch.allclose(body_torque, expected_torque, atol=1.0e-6)
 
 
 @pytest.mark.cpu_smoke

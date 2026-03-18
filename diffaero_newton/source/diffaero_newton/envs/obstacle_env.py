@@ -40,6 +40,7 @@ class ObstacleAvoidanceEnv(DroneEnv):
     def _get_observations(self) -> Dict[str, torch.Tensor]:
         """Augment base observations with sensor data."""
         obs_dict = super()._get_observations()
+        base_state = obs_dict["policy"]
 
         # Compute sensor observations via dynamics state API
         drone_state = self.drone.get_state()
@@ -47,16 +48,17 @@ class ObstacleAvoidanceEnv(DroneEnv):
         # Keep gradients if already tracked, otherwise enable them
         if not pos.requires_grad:
             pos = pos.detach().requires_grad_(True)
-        # Use identity quaternion (xyzw) for sensor frame = body frame
-        quat_xyzw = torch.zeros(self.num_envs, 4, device=self.device)
-        quat_xyzw[:, 3] = 1.0  # w=1 for identity
+        quat_xyzw = drone_state["orientation"].roll(-1, dims=-1)
 
         sensor_obs = self.sensor(self.obstacle_manager, pos, quat_xyzw)
 
         # Flatten sensor output to 1D per environment
         sensor_flat = sensor_obs.reshape(self.num_envs, -1)
 
-        # Add sensor data to observations
-        obs_dict["policy"] = torch.cat([obs_dict["policy"], sensor_flat], dim=-1)
+        # Expose split state/perception keys for world-model paths while keeping
+        # the existing policy tensor contract for non-world trainers.
+        obs_dict["state"] = base_state
+        obs_dict["perception"] = sensor_obs
+        obs_dict["policy"] = torch.cat([base_state, sensor_flat], dim=-1)
 
         return obs_dict
