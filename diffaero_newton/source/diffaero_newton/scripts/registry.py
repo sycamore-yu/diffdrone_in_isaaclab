@@ -76,6 +76,7 @@ ALGO_REGISTRY = {
     "shac": "diffaero_newton.training.shac.SHAC",
     "world": "diffaero_newton.training.dreamerv3.World_Agent",
     "mashac": "diffaero_newton.training.mashac.MASHAC",
+    # "sha2c": "NOT_MIGRATED - see reference/diffaero/algo/SHAC.py",
 }
 
 ENV_REGISTRY = {
