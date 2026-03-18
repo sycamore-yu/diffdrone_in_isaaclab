@@ -1,6 +1,11 @@
 # Newton + IsaacLab DiffAero Reproduction Guide
 
-This workspace exists to reproduce a narrow set of DiffAero capabilities on top of Newton and IsaacLab:
+This document is the target-state architecture guide for `diffaero_newton`.
+Use `docs/progress.md` for current implementation truth and `docs/regression_matrix.md` for the compact validation matrix.
+
+The project started from a narrow obstacle-avoidance vertical slice, but the active mainline scope now includes the unified training entry for `apg`, `apg_sto`, `ppo`, `appo`, `shac`, `mashac`, and `world`, plus the `position_control`, `sim2real_position_control`, `mapc`, `obstacle_avoidance`, and `racing` environments.
+
+The core target capabilities remain:
 
 - Differentiable quadrotor dynamics rollout
 - Short-horizon risk loss
@@ -297,61 +302,43 @@ This section defines the migration baseline from DiffAero to IsaacLab+Newton acr
 ### 1. Algorithms (Training Layer)
 | Source (DiffAero) | Target Module | Description & Interface Constraint | Definition of Done & Acceptance |
 |---|---|---|---|
-| `algo/SHAC.py` | `training/shac` | Short-Horizon Actor-Critic. Needs differentiable `loss_terms` and explicit horizon unrolling. | Able to train on short horizons with Newton. |
-| `algo/APG.py` / `APG_sto` | `training/apg` | Analytic Policy Gradient. Needs fully differentiable trajectory. | APG loops run without graph breaks. |
-| `algo/PPO.py` / `Asymmetric PPO`| `training/ppo` | Standard RL. Needs detached `reward` and explicit `state` for asymmetric critic. | PPO trains policy using standardized RL outputs. |
-| `algo/dreamerv3` | `training/dreamerv3`| MBRL baseline. Depends on env observation spaces. | (Optional) Environment provides compatible pixel/state observations. |
+| `algo/SHAC.py` | `training/shac.py` | Short-Horizon Actor-Critic. Needs differentiable `loss_terms` and explicit horizon unrolling. | Able to train on short horizons with Newton. |
+| `algo/APG.py` / `APG_sto` | `training/apg.py` | Analytic Policy Gradient. Needs fully differentiable trajectory. | APG loops run without graph breaks. |
+| `algo/PPO.py` / `Asymmetric PPO`| `training/ppo.py` | Standard RL. Needs detached `reward` and explicit `state` for asymmetric critic. | PPO trains policy using standardized RL outputs. |
+| `algo/dreamerv3` | `training/dreamerv3` | MBRL baseline. Depends on env observation spaces. | Environment provides compatible pixel/state observations or is explicitly scoped state-only. |
 
 ### 2. Dynamics (Dynamics Layer)
 | Source (DiffAero) | Target Module | Description & Interface Constraint | Definition of Done & Acceptance |
 |---|---|---|---|
-| `dynamics/pointmass.py` | `dynamics/pointmass.py` | PointMass dynamics. Needs unified `base_dynamics` API. | Verified differentiable rollout with Newton. |
-| `dynamics/quadrotor.py` | `dynamics/quadrotor.py` | Quadrotor dynamics. Needs full Newton rigid body integration. | Verified differentiable rollout with control application. |
+| `dynamics/pointmass.py` | `dynamics/pointmass_dynamics.py` | PointMass dynamics. Needs unified differentiable rollout semantics. | Verified differentiable rollout with Newton/Warp-backed paths. |
+| `dynamics/quadrotor.py` | `dynamics/drone_dynamics.py` | Quadrotor dynamics. Needs full Newton rigid body integration. | Verified differentiable rollout with control application. |
 
 ### 3. Tasks/Environments (Environment Layer)
 | Source (DiffAero) | Target Module | Description & Interface Constraint | Definition of Done & Acceptance |
 |---|---|---|---|
-| `env/position_control.py` | `envs/position_control` | Basic setpoint tracking. | Reaches target; reward/loss align with DiffAero. |
-| `env/position_control_multi_agent.py` | `envs/multi_agent` | Multi-agent setpoint tracking. | Supports `num_envs` > 1 with multiple agents. |
-| `env/obstacle_avoidance.py` | `envs/obstacle_avoidance` | Obstacle avoidance task. Needs `InteractiveSceneCfg` with obstacles. | Nearest-distance queries work; OA loss computes correctly. |
-| `env/racing.py` | `envs/racing` | Trajectory/waypoint tracking. | Waypoint generation and tracking verified. |
+| `env/position_control.py` | `envs/position_control_env.py` | Basic setpoint tracking. | Reaches target; reward/loss align with DiffAero. |
+| `env/position_control_multi_agent.py` | `envs/mapc_env.py` | Multi-agent setpoint tracking. | Supports `num_envs` > 1 with multiple agents. |
+| `env/obstacle_avoidance.py` | `envs/obstacle_env.py` | Obstacle avoidance task. Needs `InteractiveSceneCfg`-style batching plus reusable obstacle queries. | Nearest-distance queries work; OA loss computes correctly. |
+| `env/racing.py` | `envs/racing_env.py` | Trajectory/waypoint tracking. | Gate progression and tracking verified. |
 
 ### 4. Sensors (Task Layer)
 | Source (DiffAero) | Target Module | Description & Interface Constraint | Definition of Done & Acceptance |
 |---|---|---|---|
-| `relpos` | `tasks/sensors` | Relative position to nearest obstacles. | Returns accurate `(N, 3)` distance vectors. |
-| `camera` | `tasks/sensors` | Depth camera using IsaacLab replicator or warp raycast. | Returns accurate depth maps `(H, W)`. |
-| `lidar` | `tasks/sensors` | 1D/2D Lidar ranges. | Returns accurate range arrays. |
+| `relpos` | `envs/sensors.py` | Relative position to nearest obstacles. | Returns accurate obstacle-relative features. |
+| `camera` | `envs/sensors.py` | Depth camera using raycast-based sensing. | Returns accurate depth maps `(H, W)`. |
+| `lidar` | `envs/sensors.py` | 1D/2D lidar ranges. | Returns accurate range arrays. |
 
 ### Minimum Runnable Examples & Verification
 For each dimension, the following test patterns must be implemented and executable under the `isaaclab-newton` conda environment:
-- **Algorithms**: `pytest tests/test_training_loops.py` - Verifies that each algo can step without crashing and properly consumes obs/state/rewards/losses.
-- **Dynamics**: `pytest tests/test_dynamics.py` - Verifies Newtonian integration and gradient flow (e.g. `loss.backward()` works).
-- **Environments/Tasks**: `python script/train.py task=<task_name> algo=<algo_name>` - Verifies that specific task+algo combinations parse configs and begin standard rollout in `isaaclab-newton`. 
-- **Sensors**: `pytest tests/test_sensors.py` - Verifies shape and basic correctness of sensor generation within `InteractiveSceneCfg`.
+- **Algorithms**: `conda run -n isaaclab-newton pytest diffaero_newton/tests/test_apg_training.py -q`, `test_ppo_training.py -q`, `test_world_training.py -q`.
+- **Dynamics**: `conda run -n isaaclab-newton pytest diffaero_newton/tests/test_pointmass_dynamics.py -q` and `test_drone_dynamics.py -q`.
+- **Environments/Tasks**: `conda run -n isaaclab-newton pytest diffaero_newton/tests/test_position_control.py -q`, `test_obstacle_training.py -q`, `test_racing_env.py -q`, plus `python diffaero_newton/source/diffaero_newton/scripts/train.py --algo <algo> --env <env> --dynamics <dynamics>`.
+- **Sensors**: `conda run -n isaaclab-newton pytest diffaero_newton/tests/test_sensors.py -q`.
 
 ### Current Validated Status
 
-As of 2026-03-12, the current obstacle-training vertical slice has a validated runtime differentiable propagation path:
-
-- `diffaero_newton/source/diffaero_newton/dynamics/drone_dynamics.py` uses Newton-backed state propagation with an explicit autograd bridge.
-- `diffaero_newton/source/diffaero_newton/envs/drone_env.py` enables differentiable dynamics by default for the tested training path.
-- The shared environment/trainer contract on `main` is `obs, state, loss_terms, reward, extras`.
-- Most test and training paths prefer CUDA when available, but a few contract-level smoke tests intentionally pin CPU to keep subprocess and world-model validation lightweight.
-
-Validated command:
-
-- `conda run -n isaaclab-newton pytest -q diffaero_newton/tests/test_obstacle_training.py`
-
-Validated result:
-
-- `18 passed`
-
-Important scope note:
-
-- This validation only covers the current quadrotor + obstacle avoidance + SHAC slice.
-- It confirms that the current runtime path is Newton-backed and differentiable on that slice.
-- It does not imply that the broader DiffAero migration matrix is complete.
+Validation status changes faster than this architecture guide.
+Use `docs/progress.md` as the implementation ledger for pass/fail state, known regressions, and command-level validation confidence.
 
 ## Implementation Order
 

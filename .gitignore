@@ -42,6 +42,9 @@ runs/
 *.swp
 *.swo
 
+# Local spec index
+.ccw/.spec-index/
+
 # Jupyter
 .ipynb_checkpoints/
 .wt/

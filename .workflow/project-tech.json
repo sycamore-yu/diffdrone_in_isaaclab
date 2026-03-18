@@ -1,0 +1,144 @@
+{
+  "project_name": "diffdroneinisaac_workspace",
+  "initialized_at": "2026-03-18T00:00:00+08:00",
+  "overview": {
+    "description": "Newton + IsaacLab-oriented migration workspace for reproducing DiffAero training, dynamics, and task capabilities with a unified registry-driven training entry.",
+    "technology_stack": {
+      "languages": [
+        {
+          "name": "Python",
+          "file_count": 70,
+          "primary": true
+        },
+        {
+          "name": "Markdown",
+          "file_count": 8,
+          "primary": false
+        }
+      ],
+      "frameworks": [
+        "PyTorch",
+        "Newton",
+        "Warp",
+        "Gymnasium",
+        "IsaacLab-style DirectRLEnv shim"
+      ],
+      "build_tools": [
+        "conda",
+        "pytest",
+        "ruff",
+        "bd"
+      ],
+      "test_frameworks": [
+        "pytest"
+      ]
+    },
+    "architecture": {
+      "style": "layered differentiable-RL stack with registry-driven composition",
+      "layers": [
+        "common",
+        "configs",
+        "dynamics",
+        "envs",
+        "tasks",
+        "training",
+        "scripts"
+      ],
+      "patterns": [
+        "config-first design",
+        "registry assembly",
+        "explicit 5-tuple env contract",
+        "runtime split between IsaacLab launch and Newton-only shim"
+      ]
+    },
+    "key_components": [
+      {
+        "name": "Unified Registry",
+        "path": "diffaero_newton/source/diffaero_newton/scripts/registry.py",
+        "description": "Constructs algorithms, dynamics configs, and environments through one public assembly surface.",
+        "importance": "high"
+      },
+      {
+        "name": "Unified Train Entry",
+        "path": "diffaero_newton/source/diffaero_newton/scripts/train.py",
+        "description": "Top-level CLI for registry-backed training and smoke validation.",
+        "importance": "high"
+      },
+      {
+        "name": "Quadrotor Dynamics",
+        "path": "diffaero_newton/source/diffaero_newton/dynamics/drone_dynamics.py",
+        "description": "Newton + Warp-backed quadrotor dynamics and body-rate controller path.",
+        "importance": "high"
+      },
+      {
+        "name": "PointMass Dynamics",
+        "path": "diffaero_newton/source/diffaero_newton/dynamics/pointmass_dynamics.py",
+        "description": "Continuous and discrete point-mass differentiable dynamics variants.",
+        "importance": "high"
+      },
+      {
+        "name": "Core Drone Environment",
+        "path": "diffaero_newton/source/diffaero_newton/envs/drone_env.py",
+        "description": "Base differentiable 5-tuple environment contract shared by several tasks.",
+        "importance": "high"
+      },
+      {
+        "name": "Obstacle Task Stack",
+        "path": "diffaero_newton/source/diffaero_newton/envs/obstacle_env.py",
+        "description": "Obstacle avoidance environment plus sensor-aware observations.",
+        "importance": "high"
+      },
+      {
+        "name": "Racing Task Stack",
+        "path": "diffaero_newton/source/diffaero_newton/envs/racing_env.py",
+        "description": "Figure-8 gate racing task with gate-frame observations and reward/loss shaping.",
+        "importance": "high"
+      },
+      {
+        "name": "Training Algorithms",
+        "path": "diffaero_newton/source/diffaero_newton/training",
+        "description": "APG, PPO/APPO, SHAC, MASHAC, and DreamerV3/world implementations.",
+        "importance": "high"
+      }
+    ]
+  },
+  "features": [
+    {
+      "name": "Unified training entry",
+      "status": "implemented"
+    },
+    {
+      "name": "Point-mass dynamics family",
+      "status": "implemented"
+    },
+    {
+      "name": "Quadrotor low-level differentiable dynamics",
+      "status": "implemented-with-known-regression-in-env-backed-factory"
+    },
+    {
+      "name": "Obstacle, racing, MAPC, and sim2real environments",
+      "status": "implemented-with-partial-reference-parity"
+    },
+    {
+      "name": "Hydra/export/tooling parity",
+      "status": "missing"
+    }
+  ],
+  "development_index": {
+    "feature": [],
+    "enhancement": [],
+    "bugfix": [],
+    "refactor": [],
+    "docs": []
+  },
+  "statistics": {
+    "total_features": 5,
+    "total_sessions": 1,
+    "last_updated": "2026-03-18T00:00:00+08:00"
+  },
+  "_metadata": {
+    "initialized_by": "codex-spec-setup",
+    "analysis_timestamp": "2026-03-18T00:00:00+08:00",
+    "analysis_mode": "migration-audit"
+  }
+}

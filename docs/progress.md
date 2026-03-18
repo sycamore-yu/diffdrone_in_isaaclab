@@ -5,7 +5,7 @@ This document serves as the ground truth for the current actual migration status
 ## Overall Status
 - **Target Setup**: `isaaclab-newton` conda environment.
 - **Goal**: Migrate DiffAero capabilities (Dynamics, Algorithms, Environments, Sensors) to Newton + IsaacLab.
-- **Mainline Reality**: The unified training entry on `main` is usable for `apg`, `apg_sto`, `ppo`, `appo`, `shac`, `mashac`, and `world`, and the environment registry now exposes explicit obstacle/racing observation contracts. Recent fixes restored missing point-mass control semantics needed by racing, added an opt-in DiffAero-style quadrotor rate-controller path with normalized `[0, 1]` body-rate commands, exposed the relevant quadrotor control overrides through the unified training entry, and fixed a detached-observation bug in multi-iteration APG training, but broader parity is still incomplete in algorithms, world-model breadth, and tooling.
+- **Mainline Reality**: The unified training entry on `main` is usable for `apg`, `apg_sto`, `ppo`, `appo`, `shac`, `mashac`, and `world`, and the environment registry now exposes explicit obstacle/racing observation contracts. Recent fixes restored missing point-mass control semantics needed by racing, added an opt-in DiffAero-style quadrotor rate-controller path with normalized `[0, 1]` body-rate commands, and fixed a detached-observation bug in multi-iteration APG training, but broader parity is still incomplete in algorithms, world-model breadth, env/sensor realism, and tooling. As of 2026-03-18, the env-backed quadrotor unified-entry path is also regressed: `dynamics/registry.py` passes `action_frame` into `DroneConfig`, so the quadrotor body-rate runtime-preflight path currently fails in `isaaclab-newton`.
 - **Runtime Note**: Mainline now separates real IsaacLab launch (`common/isaaclab_launch.py`) from the project's Newton-only DirectRL shim (`common/direct_rl_shim.py`). The old broad runtime fallback in `isaaclab_compat.py` has been reduced to a legacy import bridge, and the package `__main__` entry now reuses the same launch helper with a single resolved device path shared by both environment and trainer.
 
 ## Capability Matrix Status Tracker
@@ -22,33 +22,34 @@ This document serves as the ground truth for the current actual migration status
 - [x] **PointMass**: Implemented with explicit `pointmass` (backward-compatible alias), `continuous_pointmass`, and `discrete_pointmass` model options. Low-level differentiable propagation now passes `test_pointmass_dynamics.py`, and both model variants are wired into the unified training entry.
 - [x] **PointMass action_frame**: Added `action_frame` config option ('world'/'local') to `DiscretePointMass`, with quaternion-to-rotation-matrix conversion for local frame transformation.
 - [x] **Quadrotor**: Implemented with Newton + Warp autograd bridge. Low-level action-to-state backprop works on `main`, and obstacle-task differentiable loss tests pass.
-- [x] **Quadrotor control_mode**: Added `control_mode`, `K_angvel`, `torque_ratio`, `thrust_ratio` fields to `DroneConfig` for future rate-controller support.
+- [ ] **Quadrotor control_mode**: Partially wired. `control_mode`, `k_angvel`, `max_body_rates`, `torque_ratio`, and `thrust_ratio` exist on the config surface, but env-backed quadrotor construction currently fails in the unified factory and the full DiffAero controller semantics are not consumed end-to-end.
 - [ ] **DiffAero Quadrotor Semantics**: Not yet matched 1:1. Current mainline quadrotor uses direct normalized motor thrust input and does not yet reproduce DiffAero's rate-controller-oriented semantics or full aerodynamic model details.
 
 ### Tasks/Environments
 - [x] **Position Control**: Implemented (Single-agent target position tracking)
 - [x] **Multi-Agent Position Control**: Implemented (Multi-agent with collision rewards and proper shape flattening)
-- [x] **Obstacle Avoidance**: Implemented (ObstacleAvoidanceEnv with multi-modal sensor integration)
+- [x] **Obstacle Avoidance**: Implemented at coarse capability level (ObstacleAvoidanceEnv with multi-modal sensor integration), but still narrower than the reference task on obstacle geometry, reset/randomization depth, and richer perception/state contracts.
 - [x] **Racing**: Implemented and trainer-validated for the point-mass path. Figure-8 gate geometry, gate-frame observations, gate pass/collision detection, target-gate advancement, gate-frame point-mass action handling, reset semantics aligned to the reference task, reward/loss wiring, and dedicated racing smoke coverage now exist on `main`. The current reward path no longer depends on a hidden per-episode target speed when `use_vel_track=False`, and `reward_progress` is again distinct from loss weighting. Manual CUDA validation with APG continues to produce non-zero gate passes in short runs after those fixes.
 - [x] **Sim2RealPositionControl**: Implemented as `sim2real_position_control` with square-target switching derived from DiffAero's reference environment; validated on the unified entry with point-mass dynamics.
 
 ### Sensors
-- [x] **Relative Position (relpos)**: Implemented (sorted nearest-obstacle relative positions)
-- [x] **Camera**: Implemented (depth-map ray-casting, configurable FOV & resolution)
-- [x] **Lidar**: Implemented (360° ray-casting with vertical/horizontal coverage)
+- [x] **Relative Position (relpos)**: Implemented (sorted nearest-obstacle relative positions), but still simplified relative to the reference obstacle/state contract.
+- [x] **Camera**: Implemented (depth-map ray-casting, configurable FOV & resolution), but still simplified relative to the reference mount/randomization stack.
+- [x] **Lidar**: Implemented (360° ray-casting with vertical/horizontal coverage), but still simplified relative to the reference mount/randomization stack.
 
 ## Gaps Relative to Reference DiffAero
 - Missing algorithms on main: `SHA2C`.
-- Missing dynamics parity: full DiffAero-like quadrotor control semantics are still opt-in, and point-mass local/world-frame parity is still narrower than the reference implementation.
-- Missing environment parity: richer sim-to-real/deployment workflows are still absent, and racing validation currently covers the point-mass APG path rather than every algorithm/backend combination.
+- Known regression on main: env-backed quadrotor unified-entry construction currently fails because `dynamics/registry.py` passes unsupported `action_frame` into `DroneConfig`.
+- Missing dynamics parity: full DiffAero-like quadrotor control semantics are still partial, and point-mass local/world-frame parity is still narrower than the reference implementation.
+- Missing environment parity: richer sim-to-real/deployment workflows are still absent, obstacle avoidance remains narrower than the reference task on geometry/randomization/state semantics, and racing validation currently covers the point-mass APG path rather than every algorithm/backend combination.
+- Missing sensor parity: current relpos/camera/lidar paths assume simplified spherical obstacles and body-frame mounting; reference IMU support and richer sensor/randomization stacks are absent.
 - Missing world-model parity: perception-enabled DreamerV3 variants, richer task coverage beyond the current `position_control` smoke path, and any Hydra-style experiment workflow around it.
 - Missing tooling parity: Hydra-based train/test/export workflow, sweep tooling, Optuna / WandB integration, and export/deploy utilities.
 
 ## Validation & Commands
-Currently verified on `main`:
+Passing checks currently verified on `main`:
 
 ### Runtime / CPU smoke
-- `conda run -n isaaclab-newton pytest diffaero_newton/tests/test_train_entry.py -q` (Unified training entry / registry / shim smoke, including package `__main__` device-plumbing preflight)
 - `conda run -n isaaclab-newton pytest diffaero_newton/tests/test_world_training.py -q` (DreamerV3/world CPU and CUDA smoke, including replay-ready world-model update coverage and Gym-style tuple unpacking)
 - `conda run -n isaaclab-newton pytest diffaero_newton/tests/test_obstacle_training.py -q` (Obstacle env contract smoke on explicit CPU, sensor-aware observation contract checks, reset-triggering differentiable regression, and CUDA-only SHAC update checks when available)
 - `conda run -n isaaclab-newton pytest diffaero_newton/tests/test_ppo_training.py -q` (PPO / APPO training checks)
@@ -68,10 +69,13 @@ Currently verified on `main`:
 - `conda run -n isaaclab-newton pytest diffaero_newton/tests/test_world_training.py -q` (DreamerV3/world GPU smoke on CUDA-capable hosts, including replay-ready world-model update coverage)
 - `conda run -n isaaclab-newton pytest diffaero_newton/tests/test_obstacle_training.py -q` (Includes explicit `gpu_smoke` obstacle differentiable-loss, standalone SHAC update, and TensorBoard training checks when CUDA is available)
 - `conda run -n isaaclab-newton python diffaero_newton/source/diffaero_newton/scripts/train.py --algo apg --env position_control --dynamics pointmass --max_iter 3 --log_interval 1 --n_envs 8 --l_rollout 4` (Env-backed unified training entry smoke on default accelerator)
-- `conda run -n isaaclab-newton python diffaero_newton/source/diffaero_newton/scripts/train.py --algo apg --env position_control --dynamics quadrotor --quadrotor-control-mode body_rate --quadrotor-max-body-rates 3.0 3.0 1.5 --quadrotor-k-angvel 5.0 4.0 3.0 --quadrotor-drag-coeff-xy 0.05 --quadrotor-drag-coeff-z 0.1 --max_iter 1 --l_rollout 1 --n_envs 1 --device cpu --log_interval 1` (Unified-entry quadrotor `body_rate` smoke)
 - `conda run -n isaaclab-newton python diffaero_newton/source/diffaero_newton/scripts/train.py --algo world --env position_control --dynamics pointmass --max_iter 1 --l_rollout 4 --n_envs 2 --device cuda --log_interval 1 --world_warmup_steps 4 --world_min_ready_steps 2 --world_batch_size 2 --world_batch_length 2 --world_imagine_length 2` (DreamerV3/world unified-entry smoke on CUDA-capable hosts)
 - `conda run -n isaaclab-newton python diffaero_newton/source/diffaero_newton/scripts/train.py --algo apg --env position_control --dynamics continuous_pointmass --max_iter 1 --l_rollout 1 --n_envs 2 --device cuda --log_interval 1` (Continuous point-mass unified entry GPU smoke)
 - `conda run -n isaaclab-newton python diffaero_newton/source/diffaero_newton/scripts/train.py --algo apg --env position_control --dynamics discrete_pointmass --max_iter 1 --l_rollout 1 --n_envs 2 --device cuda --log_interval 1` (Discrete point-mass unified entry GPU smoke)
+
+### Known failing / blocked
+- `conda run -n isaaclab-newton pytest diffaero_newton/tests/test_train_entry.py -q` currently fails with `1 failed, 6 passed` on 2026-03-18 because `dynamics/registry.py` passes `action_frame` into `DroneConfig`.
+- `conda run -n isaaclab-newton python diffaero_newton/source/diffaero_newton/scripts/train.py --algo apg --env position_control --dynamics quadrotor --quadrotor-control-mode body_rate --quadrotor-max-body-rates 3.0 3.0 1.5 --quadrotor-k-angvel 5.0 4.0 3.0 --quadrotor-drag-coeff-xy 0.05 --quadrotor-drag-coeff-z 0.1 --max_iter 1 --l_rollout 1 --n_envs 1 --device cpu --log_interval 1` should be treated as blocked until the same factory/config mismatch is fixed.
 
 ### Remaining validation gaps
 - Racing is now validated on the differentiable point-mass APG path, but SHAC/PPO-style convergence coverage is still lighter than the point-mass APG validation path.

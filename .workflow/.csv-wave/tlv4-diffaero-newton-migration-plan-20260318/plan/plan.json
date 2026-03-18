@@ -1,0 +1,26 @@
+{
+  "session_id": "tlv4-diffaero-newton-migration-plan-20260318",
+  "pipeline_type": "spec-only",
+  "epic": "diffdroneinisaac_workspace-i8x",
+  "created_issues": [
+    "diffdroneinisaac_workspace-i8x.17",
+    "diffdroneinisaac_workspace-i8x.18",
+    "diffdroneinisaac_workspace-i8x.19",
+    "diffdroneinisaac_workspace-i8x.20",
+    "diffdroneinisaac_workspace-i8x.21",
+    "diffdroneinisaac_workspace-i8x.22"
+  ],
+  "reused_existing_issues": [
+    "diffdroneinisaac_workspace-i8x.16",
+    "diffdroneinisaac_workspace-2kq",
+    "diffdroneinisaac_workspace-3w0",
+    "diffdroneinisaac_workspace-18r",
+    "diffdroneinisaac_workspace-8pt"
+  ],
+  "final_delivery_gates": [
+    "Every claimed registry capability has at least one runtime_preflight/cpu_smoke/gpu_smoke or unified-entry validation path.",
+    "docs/progress.md records passing, blocked, and missing capability state without contradiction.",
+    "Quadrotor env-backed unified entry is repaired before body-rate parity is claimed.",
+    "SHA2C, obstacle/sensor parity, world breadth, and tooling scope are either implemented or explicitly descoped."
+  ]
+}

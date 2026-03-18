@@ -1,37 +1,42 @@
 # Regression Validation Matrix
 
-This document tracks which algorithm × environment × dynamics combinations have been validated.
+This document is a compact supplement to `docs/progress.md`.
+
+Legend:
+
+- `✅` verified by dedicated tests or explicit unified-entry smoke
+- `⚠` implemented but still narrower than reference parity
+- `❌` currently blocked by a known regression
+- `—` not yet validated
 
 ## Validation Matrix
 
-| Algorithm | Dynamics | Env: Position | Env: MAPC | Env: Obstacle | Env: Racing |
-|-----------|----------|:---:|:---:|:---:|:---:|
-| **SHAC** | PointMass | ✅ | ✅ | — | — |
-| **APG** | PointMass | ✅ | — | — | — |
-| **APG_sto** | PointMass | ✅ | — | — | — |
-| **PPO** | PointMass | ✅ | — | — | — |
-| **Asym PPO** | PointMass | ✅ | — | — | — |
-
-> **Legend**: ✅ = test passes, — = not yet validated, ❌ = known failure
+| Algorithm | Dynamics | Position | Sim2Real | MAPC | Obstacle | Racing |
+|-----------|----------|:---:|:---:|:---:|:---:|:---:|
+| **SHAC** | PointMass | — | — | — | ✅ | ✅ |
+| **APG** | PointMass | ✅ | — | — | — | ✅ |
+| **APG_sto** | PointMass | ✅ | — | — | — | — |
+| **PPO / APPO** | PointMass | ✅ | — | — | — | — |
+| **MASHAC** | Continuous PointMass | — | — | ✅ | — | — |
+| **World** | PointMass | ✅ state-only | — | — | — | — |
+| **APG** | Quadrotor | ❌ | — | — | — | — |
 
 ## Validation Commands
 
 ```bash
-# All tests (run from .wt/gemini)
-conda run -n isaaclab-newton python diffaero_newton/tests/test_sensors.py
-conda run -n isaaclab-newton python diffaero_newton/tests/test_apg_training.py
-conda run -n isaaclab-newton python diffaero_newton/tests/test_ppo_training.py
-conda run -n isaaclab-newton python diffaero_newton/tests/test_obstacle_training.py
-
-# Unified training entry (smoke test)
-conda run -n isaaclab-newton python diffaero_newton/source/diffaero_newton/scripts/train.py --list
-conda run -n isaaclab-newton python diffaero_newton/source/diffaero_newton/scripts/train.py \
-  --algo apg --env position_control --dynamics pointmass \
-  --max_iter 3 --log_interval 1 --n_envs 8 --l_rollout 4
+conda run -n isaaclab-newton pytest diffaero_newton/tests/test_train_entry.py -q
+conda run -n isaaclab-newton pytest diffaero_newton/tests/test_apg_training.py -q
+conda run -n isaaclab-newton pytest diffaero_newton/tests/test_ppo_training.py -q
+conda run -n isaaclab-newton pytest diffaero_newton/tests/test_world_training.py -q
+conda run -n isaaclab-newton pytest diffaero_newton/tests/test_mashac_training.py -q
+conda run -n isaaclab-newton pytest diffaero_newton/tests/test_obstacle_training.py -q
+conda run -n isaaclab-newton pytest diffaero_newton/tests/test_racing_env.py -q
+conda run -n isaaclab-newton pytest diffaero_newton/tests/test_pointmass_dynamics.py -q
+conda run -n isaaclab-newton pytest diffaero_newton/tests/test_drone_dynamics.py -q
 ```
 
-## Not Yet Migrated
+## Notes
 
-- **DreamerV3** (i8x.8): World-model training stack — complex, deferred
-- **MASHAC** (i8x.9): Multi-agent SHAC — depends on multi-agent infra, deferred
-- **Quadrotor dynamics**: Basic rollout works, full unification pending
+- `Sim2RealPositionControl` has dedicated env tests, but no explicit end-to-end training validation is recorded here yet.
+- `ObstacleAvoidance` and the sensor stack are capability-complete at a coarse level, but still narrower than the reference implementation on mixed geometry, IMU support, and sensor/randomization realism.
+- The quadrotor row is currently blocked by the `DroneConfig` / `action_frame` factory mismatch confirmed in `test_train_entry.py` on 2026-03-18.
