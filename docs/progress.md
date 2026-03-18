@@ -39,7 +39,7 @@ This document serves as the ground truth for the current actual migration status
 
 ## Gaps Relative to Reference DiffAero
 - Missing algorithms on main: `SHA2C`.
-- Known regression on main: env-backed quadrotor unified-entry construction currently fails because `dynamics/registry.py` passes unsupported `action_frame` into `DroneConfig`.
+- Known regression on main: FIXED - env-backed quadrotor unified-entry construction now works after removing `action_frame` from `DroneConfig` call in `dynamics/registry.py`.
 - Missing dynamics parity: full DiffAero-like quadrotor control semantics are still partial, and point-mass local/world-frame parity is still narrower than the reference implementation.
 - Missing environment parity: richer sim-to-real/deployment workflows are still absent, obstacle avoidance remains narrower than the reference task on geometry/randomization/state semantics, and racing validation currently covers the point-mass APG path rather than every algorithm/backend combination.
 - Missing sensor parity: current relpos/camera/lidar paths assume simplified spherical obstacles and body-frame mounting; reference IMU support and richer sensor/randomization stacks are absent.
