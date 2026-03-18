@@ -7,18 +7,18 @@ import torch.nn.functional as F
 from torch import Tensor
 from diffaero_newton.tasks.obstacle_manager import ObstacleManager
 
-def quat_rotate(q: Tensor, v: Tensor) -> Tensor:
-    """Rotate a vector by a quaternion."""
-    q_w = q[..., 0]
-    q_vec = q[..., 1:]
-    a = v * (2.0 * q_w ** 2 - 1.0).unsqueeze(-1)
-    b = torch.cross(q_vec, v, dim=-1) * q_w.unsqueeze(-1) * 2.0
+def quat_rotate(q_xyzw: Tensor, v: Tensor) -> Tensor:
+    """Rotate a vector by a quaternion [qx, qy, qz, qw]."""
+    qw = q_xyzw[..., 3]
+    q_vec = q_xyzw[..., :3]
+    a = v * (2.0 * qw ** 2 - 1.0).unsqueeze(-1)
+    b = torch.cross(q_vec, v, dim=-1) * qw.unsqueeze(-1) * 2.0
     c = q_vec * torch.sum(q_vec * v, dim=-1, keepdim=True) * 2.0
     return a + b + c
 
-def quat_rotate_inverse(q: Tensor, v: Tensor) -> Tensor:
-    """Rotate a vector by the inverse of a quaternion."""
-    q_inv = torch.cat([q[..., :1], -q[..., 1:]], dim=-1)
+def quat_rotate_inverse(q_xyzw: Tensor, v: Tensor) -> Tensor:
+    """Rotate a vector by the inverse of a quaternion [qx, qy, qz, qw]."""
+    q_inv = torch.cat([-q_xyzw[..., :3], q_xyzw[..., 3:]], dim=-1)
     return quat_rotate(q_inv, v)
 
 def quaternion_apply(quaternion: Tensor, point: Tensor) -> Tensor:
@@ -238,43 +238,48 @@ class RayCastingSensorBase:
         z_ground_plane: Optional[Tensor] = None
     ) -> Tensor: # [num_envs, H, W]
         ray_starts = pos.unsqueeze(1).expand(-1, self.H * self.W, -1) # [num_envs, n_rays, 3]
-        
-        # All obstacles in current diffaero_newton.tasks.ObstacleManager are just spherical
-        # We will use raydist3d_sphere for all of them
+
         n_spheres = getattr(obstacle_manager, "cfg", None)
         n_spheres = n_spheres.num_obstacles if n_spheres else getattr(obstacle_manager, "num_obstacles", 0)
-        
-        sphere_ray_dists = torch.full( # [num_envs, n_obstacles, n_rays]
+        n_cubes = getattr(obstacle_manager, "num_cubes", 0)
+
+        sphere_ray_dists = torch.full(
             (pos.shape[0], n_spheres, self.H*self.W),
             fill_value=self.max_dist, dtype=torch.float, device=self.device)
-        cube_ray_dists = torch.empty((pos.shape[0], 0, self.H*self.W), dtype=torch.float, device=self.device)
-            
-        distances = obstacle_manager.compute_distances(pos)  # may be 3D
+        cube_ray_dists = torch.full(
+            (pos.shape[0], n_cubes, self.H*self.W),
+            fill_value=self.max_dist, dtype=torch.float, device=self.device)
+
+        distances = obstacle_manager.compute_distances(pos)  # [num_envs, n_spheres+n_cubes, 1]
         while distances.dim() > 2:
             distances = distances.squeeze(-1)
         env_ids, obstacle_ids = torch.where(distances.le(self.max_dist))
-        
-        sphere_env_ids, sphere_ids = env_ids, obstacle_ids
-        cube_env_ids, cube_ids = torch.empty(0, dtype=torch.long), torch.empty(0, dtype=torch.long)
-        
+
+        sphere_env_ids = env_ids
+        sphere_ids = obstacle_ids
+        cube_env_ids = torch.empty(0, dtype=torch.long)
+        cube_ids = torch.empty(0, dtype=torch.long)
+
         p_spheres = obstacle_manager.get_obstacle_positions() # [num_envs, n_spheres, 3]
         r_spheres = obstacle_manager.get_obstacle_radii()     # [num_envs, n_spheres]
-        
+        p_cubes = obstacle_manager.get_cube_positions()
+        lwh_cubes = obstacle_manager.get_cube_lwh()
+        rpy_cubes = obstacle_manager.get_cube_rpy()
+
         depth, _ = get_ray_dist(
             sphere_ray_dists=sphere_ray_dists,
             sphere_env_ids=sphere_env_ids,
             sphere_ids=sphere_ids,
-            p_spheres=p_spheres, 
-            r_spheres=r_spheres, 
-            
+            p_spheres=p_spheres,
+            r_spheres=r_spheres,
+
             cube_ray_dists=cube_ray_dists,
             cube_env_ids=cube_env_ids,
             cube_ids=cube_ids,
-            p_cubes=torch.empty((pos.shape[0], 0, 3), device=self.device), # Dummy
-            lwh_cubes=torch.empty((pos.shape[0], 0, 3), device=self.device), # Dummy
-            rpy_cubes=torch.empty((pos.shape[0], 0, 3), device=self.device), # Dummy
+            p_cubes=p_cubes,
+            lwh_cubes=lwh_cubes,
+            rpy_cubes=rpy_cubes,
 
-            
             start=ray_starts,
             ray_directions_b=self.sensor2body(self.ray_directions), # [num_envs, n_rays, 3]
             quat_xyzw=quat_xyzw,

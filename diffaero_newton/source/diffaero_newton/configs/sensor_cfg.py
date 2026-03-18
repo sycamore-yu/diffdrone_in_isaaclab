@@ -68,6 +68,8 @@ def sensor_observation_shape(cfg: SensorCfg) -> Tuple[int, ...]:
     if isinstance(cfg, RelposSensorCfg):
         rows = cfg.n_obstacles + int(cfg.ceiling) + 4 * int(cfg.walls)
         return (rows * 3,)
+    if isinstance(cfg, IMUSensorCfg):
+        return (10,)  # acc_b (3) + gyro_b (3) + pos_w (3) + quat (4) = 13, flat
     raise TypeError(f"Unsupported sensor config type: {type(cfg).__name__}")
 
 
@@ -87,4 +89,6 @@ def build_sensor_cfg(name: str, num_obstacles: int) -> SensorCfg:
         return LidarSensorCfg()
     if name == "relpos":
         return RelposSensorCfg(n_obstacles=num_obstacles)
-    raise ValueError(f"Unknown sensor: {name}. Available: camera, lidar, relpos")
+    if name == "imu":
+        return IMUSensorCfg()
+    raise ValueError(f"Unknown sensor: {name}. Available: camera, lidar, relpos, imu")
