@@ -1,0 +1,27 @@
+{
+  "id": "IMPL-2",
+  "title": "Migrate SHA2C into the unified entry",
+  "description": "Port the missing SHA2C algorithm surface from DiffAero, wire it into the unified registry/CLI, and add acceptance tests.",
+  "depends_on": [
+    "IMPL-1"
+  ],
+  "acceptance": [
+    "scripts/registry.py exposes sha2c",
+    "scripts/train.py accepts --algo sha2c",
+    "At least one isaaclab-newton smoke command through train.py --algo sha2c passes",
+    "Targeted test coverage exists for registry/CLI/training construction behavior"
+  ],
+  "review_focus": [
+    "Algorithm contract correctness",
+    "No regression to existing apg/ppo/shac/mashac/world registry behavior",
+    "Stable tuple and state semantics for training loop outputs"
+  ],
+  "docs_required": [
+    "docs/progress.md",
+    "docs/regression_matrix.md"
+  ],
+  "meta": {
+    "type": "algorithm",
+    "agent": "codex"
+  }
+}

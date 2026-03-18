@@ -1,0 +1,26 @@
+{
+  "id": "IMPL-5",
+  "title": "Expand world/perception support or de-scope it formally",
+  "description": "Audit existing DreamerV3 perception plumbing and either expose a real supported path or document a strict state-only limit with aligned tests.",
+  "depends_on": [
+    "IMPL-1"
+  ],
+  "acceptance": [
+    "Public world-model behavior through train.py matches docs",
+    "conda run -n isaaclab-newton pytest diffaero_newton/tests/test_world_training.py -q passes",
+    "No stale docs claim broader world/perception support than the code actually provides"
+  ],
+  "review_focus": [
+    "State vs perception contract clarity",
+    "Replay buffer consistency",
+    "No silent requirement for unavailable env perception outputs"
+  ],
+  "docs_required": [
+    "docs/progress.md",
+    "docs/regression_matrix.md"
+  ],
+  "meta": {
+    "type": "world-model",
+    "agent": "codex"
+  }
+}

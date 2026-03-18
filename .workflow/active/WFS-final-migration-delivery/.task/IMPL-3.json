@@ -1,0 +1,27 @@
+{
+  "id": "IMPL-3",
+  "title": "Close quadrotor semantic parity gap",
+  "description": "Audit and implement the remaining DiffAero quadrotor controller semantics, or narrow the supported semantics explicitly and test them.",
+  "depends_on": [
+    "IMPL-1"
+  ],
+  "acceptance": [
+    "The intended supported quadrotor control semantics are explicit in code and docs",
+    "conda run -n isaaclab-newton pytest diffaero_newton/tests/test_drone_dynamics.py -q passes",
+    "conda run -n isaaclab-newton pytest diffaero_newton/tests/test_train_entry.py -q passes",
+    "Unified-entry quadrotor smoke command still passes after the semantics work"
+  ],
+  "review_focus": [
+    "No regression to the already-fixed factory path",
+    "Behavior matches the documented control_mode contract",
+    "No hidden detach or rollout safety regressions"
+  ],
+  "docs_required": [
+    "docs/progress.md",
+    "docs/regression_matrix.md"
+  ],
+  "meta": {
+    "type": "dynamics",
+    "agent": "codex"
+  }
+}

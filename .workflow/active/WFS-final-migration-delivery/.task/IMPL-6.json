@@ -1,0 +1,30 @@
+{
+  "id": "IMPL-6",
+  "title": "Deliver minimal tooling parity",
+  "description": "Implement the smallest supportable export / service tooling surface for this branch, and explicitly defer the rest with docs.",
+  "depends_on": [
+    "IMPL-2",
+    "IMPL-3",
+    "IMPL-4",
+    "IMPL-5"
+  ],
+  "acceptance": [
+    "Supported tooling entrypoints are discoverable in code and docs",
+    "Any implemented tooling path has a smoke or unit test",
+    "Hydra/export/WandB/Optuna/deploy scope is explicit rather than implied"
+  ],
+  "review_focus": [
+    "Operational clarity",
+    "No dead-end CLI or placeholder interface presented as complete",
+    "No regression to current training entry behavior"
+  ],
+  "docs_required": [
+    "docs/progress.md",
+    "docs/regression_matrix.md",
+    "docs/README.md"
+  ],
+  "meta": {
+    "type": "tooling",
+    "agent": "codex"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "id": "IMPL-1",
+  "title": "Re-baseline docs and validation gates",
+  "description": "Align docs/progress.md and docs/regression_matrix.md with the verified merged-main behavior before wider migration changes start.",
+  "depends_on": [],
+  "acceptance": [
+    "conda run -n isaaclab-newton pytest diffaero_newton/tests/test_train_entry.py -q passes",
+    "conda run -n isaaclab-newton python diffaero_newton/source/diffaero_newton/scripts/train.py --algo apg --env position_control --dynamics quadrotor --quadrotor-control-mode body_rate --quadrotor-max-body-rates 3.0 3.0 1.5 --quadrotor-k-angvel 5.0 4.0 3.0 --quadrotor-drag-coeff-xy 0.05 --quadrotor-drag-coeff-z 0.1 --max_iter 1 --l_rollout 1 --n_envs 1 --device cpu --log_interval 1 passes",
+    "docs/progress.md no longer contains mutually contradictory fixed-vs-blocked statements",
+    "docs/regression_matrix.md matches the current verified quadrotor status"
+  ],
+  "review_focus": [
+    "Prevent docs drift between merged main and actual local validation",
+    "Do not overstate quadrotor parity just because the factory regression is fixed"
+  ],
+  "docs_required": [
+    "docs/progress.md",
+    "docs/regression_matrix.md"
+  ],
+  "meta": {
+    "type": "docs-validation",
+    "agent": "codex"
+  }
+}
