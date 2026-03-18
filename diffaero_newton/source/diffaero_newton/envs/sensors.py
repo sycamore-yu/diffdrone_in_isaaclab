@@ -3,7 +3,6 @@ from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
-import torch.nn.functional as F
 from torch import Tensor
 from diffaero_newton.tasks.obstacle_manager import ObstacleManager
 
@@ -390,11 +389,15 @@ class IMUSensor:
         self.sqrt_dt = 0.1
 
         # Drift parameters (per sqrt timestep)
-        self.acc_drift_std = cfg.acc_drift_std * self.sqrt_dt
-        self.gyro_drift_std = cfg.gyro_drift_std * self.sqrt_dt
+        self._acc_drift_base = cfg.acc_drift_std
+        self._gyro_drift_base = cfg.gyro_drift_std
+        self._acc_noise_base = cfg.acc_noise_std
+        self._gyro_noise_base = cfg.gyro_noise_std
+        self.acc_drift_std = self._acc_drift_base * self.sqrt_dt
+        self.gyro_drift_std = self._gyro_drift_base * self.sqrt_dt
         # Noise parameters (per timestep / sqrt timestep)
-        self.acc_noise_std = cfg.acc_noise_std / self.sqrt_dt
-        self.gyro_noise_std = cfg.gyro_noise_std / self.sqrt_dt
+        self.acc_noise_std = self._acc_noise_base / self.sqrt_dt
+        self.gyro_noise_std = self._gyro_noise_base / self.sqrt_dt
 
         # Mounting error range
         self.mounting_range_rad = cfg.imu_mounting_error_range_deg * math.pi / 180.0
@@ -420,15 +423,11 @@ class IMUSensor:
         """Set simulation timestep after initialization."""
         self.dt = dt
         self.sqrt_dt = math.sqrt(dt)
-        # Recompute scaled stds
-        self.acc_drift_std = self.acc_drift_std / self.sqrt_dt * self.sqrt_dt  # keep ratio
-        self.gyro_drift_std = self.gyro_drift_std / self.sqrt_dt * self.sqrt_dt
-        # Actual std is cfg * sqrt_dt, noise is cfg / sqrt_dt
-        # Store base values for recalculation
-        self._acc_drift_base = self.acc_drift_std
-        self._gyro_drift_base = self.gyro_drift_std
-        self._acc_noise_base = self.acc_noise_std
-        self._gyro_noise_base = self.gyro_noise_std
+        # Recalculate scaled stds from base cfg values
+        self.acc_drift_std = self._acc_drift_base * self.sqrt_dt
+        self.gyro_drift_std = self._gyro_drift_base * self.sqrt_dt
+        self.acc_noise_std = self._acc_noise_base / self.sqrt_dt
+        self.gyro_noise_std = self._gyro_noise_base / self.sqrt_dt
 
     def sensor2body(self, vec_s: Tensor) -> Tensor:
         """Transform vector from sensor frame to body frame."""
