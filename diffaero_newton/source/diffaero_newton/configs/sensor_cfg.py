@@ -41,6 +41,23 @@ class RelposSensorCfg(SensorCfg):
     walls: bool = False
 
 
+@dataclass
+class IMUSensorCfg(SensorCfg):
+    """IMU sensor configuration with noise and drift modeling."""
+    name: str = "imu"
+    # Drift parameters (per sqrt timestep)
+    acc_drift_std: float = 0.01
+    gyro_drift_std: float = 0.01
+    # Noise parameters (per timestep / sqrt timestep)
+    acc_noise_std: float = 0.05
+    gyro_noise_std: float = 0.01
+    # Mounting error
+    imu_mounting_error_range_deg: float = 0.0
+    # Enable flags
+    enable_drift: int = 1
+    enable_noise: int = 1
+
+
 def sensor_observation_shape(cfg: SensorCfg) -> Tuple[int, ...]:
     """Return the flattened observation shape emitted by a sensor config."""
 
