@@ -74,3 +74,4 @@ class DiscretePointMassCfg(DynamicsCfg):
     max_acc_z: float = 40.0
     solver_type: str = "semi_implicit"
     n_substeps: int = 1
+    action_frame: str = "world"

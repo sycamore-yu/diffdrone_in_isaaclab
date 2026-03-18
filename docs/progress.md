@@ -19,9 +19,11 @@ This document serves as the ground truth for the current actual migration status
 - [x] **DreamerV3 / world**: Wired into `scripts/registry.py` and the unified training entry as `--algo world`. Current validated path is a state-only world-model rollout on `position_control`; it now has both CPU contract smoke and a CUDA-backed smoke gate on CUDA-capable hosts, while broader task parity remains incomplete.
 
 ### Dynamics
-- [x] **PointMass**: Implemented with explicit `pointmass` (backward-compatible alias), `continuous_pointmass`, and `discrete_pointmass` model options. The current mainline point-mass path now uses normalized actions with symmetric `xy` acceleration, negative gravity, and correct translational propagation, and low-level differentiable propagation passes `test_pointmass_dynamics.py`.
+- [x] **PointMass**: Implemented with explicit `pointmass` (backward-compatible alias), `continuous_pointmass`, and `discrete_pointmass` model options. Low-level differentiable propagation now passes `test_pointmass_dynamics.py`, and both model variants are wired into the unified training entry.
+- [x] **PointMass action_frame**: Added `action_frame` config option ('world'/'local') to `DiscretePointMass`, with quaternion-to-rotation-matrix conversion for local frame transformation.
 - [x] **Quadrotor**: Implemented with Newton + Warp autograd bridge. Low-level action-to-state backprop works on `main`, and obstacle-task differentiable loss tests pass.
-- [~] **DiffAero Quadrotor Semantics**: Partially matched. Mainline now has configurable `D_xy` / `D_z` linear drag and an opt-in body-rate controller path with quaternion-to-matrix conversion, angular-rate error feedback, gyroscopic cross-term compensation, and normalized `[0, 1] -> [-max_rate, max_rate]` body-rate mapping that matches the project-wide policy action contract. Default training configs still use direct normalized motor thrust, so full controller/frame parity is not complete yet.
+- [x] **Quadrotor control_mode**: Added `control_mode`, `K_angvel`, `torque_ratio`, `thrust_ratio` fields to `DroneConfig` for future rate-controller support.
+- [ ] **DiffAero Quadrotor Semantics**: Not yet matched 1:1. Current mainline quadrotor uses direct normalized motor thrust input and does not yet reproduce DiffAero's rate-controller-oriented semantics or full aerodynamic model details.
 
 ### Tasks/Environments
 - [x] **Position Control**: Implemented (Single-agent target position tracking)

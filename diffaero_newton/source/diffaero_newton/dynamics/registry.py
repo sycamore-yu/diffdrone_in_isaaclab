@@ -28,6 +28,7 @@ def create_dynamics(cfg: DynamicsCfg, device: str = "cpu"):
             max_body_rates=getattr(cfg, "max_body_rates", (3.14, 3.14, 3.14)),
             solver_type=getattr(cfg, "solver_type", "semi_implicit"),
             n_substeps=getattr(cfg, "n_substeps", 1),
+            action_frame=getattr(cfg, "action_frame", "world"),
         )
         return Drone(drone_cfg, device=device)
         
@@ -44,6 +45,7 @@ def create_dynamics(cfg: DynamicsCfg, device: str = "cpu"):
             max_acc_z=getattr(cfg, "max_acc_z", 40.0),
             solver_type=getattr(cfg, "solver_type", "semi_implicit"),
             n_substeps=getattr(cfg, "n_substeps", 1),
+            action_frame=getattr(cfg, "action_frame", "world"),
         )
         return ContinuousPointMass(pm_cfg, device=device)
 
@@ -60,6 +62,7 @@ def create_dynamics(cfg: DynamicsCfg, device: str = "cpu"):
             max_acc_z=getattr(cfg, "max_acc_z", 40.0),
             solver_type=getattr(cfg, "solver_type", "semi_implicit"),
             n_substeps=getattr(cfg, "n_substeps", 1),
+            action_frame=getattr(cfg, "action_frame", "world"),
         )
         return DiscretePointMass(pm_cfg, device=device)
 
