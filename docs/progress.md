@@ -111,3 +111,19 @@ pytest -m gpu_smoke -q
 # unified-entry (manual verification)
 conda run -n isaaclab-newton python diffaero_newton/source/diffaero_newton/scripts/train.py --algo <algo> --env <env> --dynamics <dyn> --max_iter 1
 ```
+
+## Obstacle/Sensor Scope (i8x.19)
+
+Current supported:
+- relpos sensor: sorted nearest-obstacle relative positions
+- camera sensor: depth-map ray-casting
+- lidar sensor: 360° ray-casting
+- spherical obstacles only
+
+NOT migrated (deferred):
+- Mixed geometry (cube/wall/ceiling)
+- IMU state
+- Sensor mount/randomization
+- Richer obstacle/state semantics
+
+These features are deferred pending future implementation. Current obstacle/sensor capabilities are sufficient for coarse obstacle avoidance tasks.
