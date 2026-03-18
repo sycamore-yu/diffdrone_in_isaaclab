@@ -41,6 +41,23 @@ class RelposSensorCfg(SensorCfg):
     walls: bool = False
 
 
+@dataclass
+class IMUSensorCfg(SensorCfg):
+    """IMU sensor configuration with noise and drift modeling."""
+    name: str = "imu"
+    # Drift parameters (per sqrt timestep)
+    acc_drift_std: float = 0.01
+    gyro_drift_std: float = 0.01
+    # Noise parameters (per timestep / sqrt timestep)
+    acc_noise_std: float = 0.05
+    gyro_noise_std: float = 0.01
+    # Mounting error
+    imu_mounting_error_range_deg: float = 0.0
+    # Enable flags
+    enable_drift: int = 1
+    enable_noise: int = 1
+
+
 def sensor_observation_shape(cfg: SensorCfg) -> Tuple[int, ...]:
     """Return the flattened observation shape emitted by a sensor config."""
 
@@ -51,6 +68,8 @@ def sensor_observation_shape(cfg: SensorCfg) -> Tuple[int, ...]:
     if isinstance(cfg, RelposSensorCfg):
         rows = cfg.n_obstacles + int(cfg.ceiling) + 4 * int(cfg.walls)
         return (rows * 3,)
+    if isinstance(cfg, IMUSensorCfg):
+        return (10,)  # acc_b (3) + gyro_b (3) + pos_w (3) + quat (4) = 13, flat
     raise TypeError(f"Unsupported sensor config type: {type(cfg).__name__}")
 
 
@@ -70,4 +89,6 @@ def build_sensor_cfg(name: str, num_obstacles: int) -> SensorCfg:
         return LidarSensorCfg()
     if name == "relpos":
         return RelposSensorCfg(n_obstacles=num_obstacles)
-    raise ValueError(f"Unknown sensor: {name}. Available: camera, lidar, relpos")
+    if name == "imu":
+        return IMUSensorCfg()
+    raise ValueError(f"Unknown sensor: {name}. Available: camera, lidar, relpos, imu")

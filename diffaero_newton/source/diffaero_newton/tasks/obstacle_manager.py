@@ -36,6 +36,11 @@ class ObstacleManager:
             device=device
         )  # x, y, z, radius
 
+        # Cube buffers: [num_envs, num_cubes, 3], [num_envs, num_cubes, 3], [num_envs, num_cubes, 3]
+        self.p_cubes = torch.zeros(num_envs, self.cfg.num_cubes, 3, device=device)  # position
+        self.lwh_cubes = torch.full((num_envs, self.cfg.num_cubes, 3), self.cfg.cube_size, device=device)  # length, width, height
+        self.rpy_cubes = torch.zeros(num_envs, self.cfg.num_cubes, 3, device=device)  # roll, pitch, yaw
+
         # Initialize obstacles
         self._spawn_obstacles()
 
@@ -131,14 +136,43 @@ class ObstacleManager:
         """
         return self.obstacles[:, :, 3]
 
+    def get_cube_positions(self) -> torch.Tensor:
+        """Get cube positions.
+
+        Returns:
+            Tensor of shape [num_envs, num_cubes, 3].
+        """
+        return self.p_cubes
+
+    def get_cube_lwh(self) -> torch.Tensor:
+        """Get cube dimensions (length, width, height).
+
+        Returns:
+            Tensor of shape [num_envs, num_cubes, 3].
+        """
+        return self.lwh_cubes
+
+    def get_cube_rpy(self) -> torch.Tensor:
+        """Get cube rotations (roll, pitch, yaw).
+
+        Returns:
+            Tensor of shape [num_envs, num_cubes, 3].
+        """
+        return self.rpy_cubes
+
+    @property
+    def num_cubes(self) -> int:
+        """Number of cube obstacles."""
+        return self.cfg.num_cubes
+
     def compute_distances(self, positions: torch.Tensor) -> torch.Tensor:
-        """Compute distances from positions to all obstacles.
+        """Compute distances from positions to all obstacles (spheres + cubes).
 
         Args:
             positions: Positions [num_envs, 3] or [num_envs, num_samples, 3].
 
         Returns:
-            Distances [num_envs, num_obstacles] or [num_envs, num_samples, num_obstacles].
+            Distances [num_envs, num_obstacles + num_cubes].
         """
         if positions.dim() == 2:
             # [num_envs, 3] -> [num_envs, 1, 3]
@@ -149,11 +183,28 @@ class ObstacleManager:
         else:
             raise ValueError(f"Expected 2 or 3D positions, got {positions.dim()}D")
 
-        # Compute Euclidean distances
-        obs_pos = self.get_obstacle_positions()  # [num_envs, num_obstacles, 3]
-        distances = torch.norm(positions.unsqueeze(1) - obs_pos.unsqueeze(2), dim=-1)
+        # Sphere distances
+        obs_pos = self.get_obstacle_positions()  # [num_envs, num_spheres, 3]
+        sphere_distances = torch.norm(positions.unsqueeze(1) - obs_pos.unsqueeze(2), dim=-1)
 
-        return distances
+        # Cube distances (AABB distance)
+        if self.num_cubes > 0:
+            p_cubes = self.get_cube_positions()  # [num_envs, num_cubes, 3]
+            lwh_cubes = self.get_cube_lwh()  # [num_envs, num_cubes, 3]
+            half_lwh = lwh_cubes / 2.0
+            # Clamp position difference to [-half_lwh, half_lwh] per axis
+            rel = positions.unsqueeze(1) - p_cubes.unsqueeze(2)  # [num_envs, num_cubes, num_samples, 3]
+            clamped = torch.clamp(rel, -half_lwh.unsqueeze(2), half_lwh.unsqueeze(2))
+            closest = p_cubes.unsqueeze(2) + clamped
+            cube_distances = torch.norm(positions.unsqueeze(1) - closest, dim=-1)  # [num_envs, num_cubes, num_samples]
+            # Flatten last two dims
+            cube_distances = cube_distances.reshape(positions.shape[0], self.num_cubes, -1)
+            # Concatenate spheres and cubes: [num_envs, num_spheres + num_cubes, num_samples]
+            all_distances = torch.cat([sphere_distances, cube_distances], dim=1)
+        else:
+            all_distances = sphere_distances
+
+        return all_distances
 
     def compute_nearest_distances(self, positions: torch.Tensor) -> torch.Tensor:
         """Compute distance to nearest obstacle for each position.

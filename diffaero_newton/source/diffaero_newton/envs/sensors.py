@@ -3,22 +3,21 @@ from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
-import torch.nn.functional as F
 from torch import Tensor
 from diffaero_newton.tasks.obstacle_manager import ObstacleManager
 
-def quat_rotate(q: Tensor, v: Tensor) -> Tensor:
-    """Rotate a vector by a quaternion."""
-    q_w = q[..., 0]
-    q_vec = q[..., 1:]
-    a = v * (2.0 * q_w ** 2 - 1.0).unsqueeze(-1)
-    b = torch.cross(q_vec, v, dim=-1) * q_w.unsqueeze(-1) * 2.0
+def quat_rotate(q_xyzw: Tensor, v: Tensor) -> Tensor:
+    """Rotate a vector by a quaternion [qx, qy, qz, qw]."""
+    qw = q_xyzw[..., 3]
+    q_vec = q_xyzw[..., :3]
+    a = v * (2.0 * qw ** 2 - 1.0).unsqueeze(-1)
+    b = torch.cross(q_vec, v, dim=-1) * qw.unsqueeze(-1) * 2.0
     c = q_vec * torch.sum(q_vec * v, dim=-1, keepdim=True) * 2.0
     return a + b + c
 
-def quat_rotate_inverse(q: Tensor, v: Tensor) -> Tensor:
-    """Rotate a vector by the inverse of a quaternion."""
-    q_inv = torch.cat([q[..., :1], -q[..., 1:]], dim=-1)
+def quat_rotate_inverse(q_xyzw: Tensor, v: Tensor) -> Tensor:
+    """Rotate a vector by the inverse of a quaternion [qx, qy, qz, qw]."""
+    q_inv = torch.cat([-q_xyzw[..., :3], q_xyzw[..., 3:]], dim=-1)
     return quat_rotate(q_inv, v)
 
 def quaternion_apply(quaternion: Tensor, point: Tensor) -> Tensor:
@@ -26,7 +25,7 @@ def quaternion_apply(quaternion: Tensor, point: Tensor) -> Tensor:
     return quat_rotate(quaternion, point)
 
 def euler_to_quaternion(roll, pitch, yaw):
-    """Convert Euler angles to quaternion."""
+    """Convert Euler angles to quaternion [qx, qy, qz, qw]."""
     cr = torch.cos(roll * 0.5)
     sr = torch.sin(roll * 0.5)
     cp = torch.cos(pitch * 0.5)
@@ -34,15 +33,37 @@ def euler_to_quaternion(roll, pitch, yaw):
     cy = torch.cos(yaw * 0.5)
     sy = torch.sin(yaw * 0.5)
 
-    q = torch.zeros((*roll.shape, 4), device=roll.device)
-    q[..., 0] = cr * cp * cy + sr * sp * sy
-    q[..., 1] = sr * cp * cy - cr * sp * sy
-    q[..., 2] = cr * sp * cy + sr * cp * sy
-    q[..., 3] = cr * cp * sy - sr * sp * cy
-    return q
+    qw = cr * cp * cy + sr * sp * sy
+    qx = cy * sr * cp - sy * cr * sp
+    qy = cr * sp * cy + sr * cp * sy
+    qz = sy * cr * cp - cy * sr * sp
+
+    return torch.stack([qx, qy, qz, qw], dim=-1)
 
 
-@torch.jit.script
+def quat_mul(a: Tensor, b: Tensor) -> Tensor:
+    """Multiply two quaternions [qx, qy, qz, qw]."""
+    shape = a.shape
+    a = a.reshape(-1, 4)
+    b = b.reshape(-1, 4)
+
+    x1, y1, z1, w1 = a[..., 0], a[..., 1], a[..., 2], a[..., 3]
+    x2, y2, z2, w2 = b[..., 0], b[..., 1], b[..., 2], b[..., 3]
+
+    ww = (z1 + x1) * (x2 + y2)
+    yy = (w1 - y1) * (w2 + z2)
+    zz = (w1 + y1) * (w2 - z2)
+    xx = ww + yy + zz
+    qq = 0.5 * (xx + (z1 - x1) * (x2 - y2))
+
+    qx = x1 * (qq + xx) + y1 * zz - z1 * yy
+    qy = y1 * (qq + yy) + z1 * xx - x1 * zz
+    qz = z1 * (qq + zz) + x1 * yy - y1 * xx
+    qw = qq - xx - yy - zz
+
+    return torch.stack([qx, qy, qz, qw], dim=-1).view(a.shape)
+
+
 def euler_angles_to_matrix(euler_angles: Tensor, convention: str) -> Tensor:
     """Convert Euler angles to rotation matrix. Simplified version of PyTorch3D's."""
     if convention == "XYZ":
@@ -216,43 +237,48 @@ class RayCastingSensorBase:
         z_ground_plane: Optional[Tensor] = None
     ) -> Tensor: # [num_envs, H, W]
         ray_starts = pos.unsqueeze(1).expand(-1, self.H * self.W, -1) # [num_envs, n_rays, 3]
-        
-        # All obstacles in current diffaero_newton.tasks.ObstacleManager are just spherical
-        # We will use raydist3d_sphere for all of them
+
         n_spheres = getattr(obstacle_manager, "cfg", None)
         n_spheres = n_spheres.num_obstacles if n_spheres else getattr(obstacle_manager, "num_obstacles", 0)
-        
-        sphere_ray_dists = torch.full( # [num_envs, n_obstacles, n_rays]
+        n_cubes = getattr(obstacle_manager, "num_cubes", 0)
+
+        sphere_ray_dists = torch.full(
             (pos.shape[0], n_spheres, self.H*self.W),
             fill_value=self.max_dist, dtype=torch.float, device=self.device)
-        cube_ray_dists = torch.empty((pos.shape[0], 0, self.H*self.W), dtype=torch.float, device=self.device)
-            
-        distances = obstacle_manager.compute_distances(pos)  # may be 3D
+        cube_ray_dists = torch.full(
+            (pos.shape[0], n_cubes, self.H*self.W),
+            fill_value=self.max_dist, dtype=torch.float, device=self.device)
+
+        distances = obstacle_manager.compute_distances(pos)  # [num_envs, n_spheres+n_cubes, 1]
         while distances.dim() > 2:
             distances = distances.squeeze(-1)
         env_ids, obstacle_ids = torch.where(distances.le(self.max_dist))
-        
-        sphere_env_ids, sphere_ids = env_ids, obstacle_ids
-        cube_env_ids, cube_ids = torch.empty(0, dtype=torch.long), torch.empty(0, dtype=torch.long)
-        
+
+        sphere_env_ids = env_ids
+        sphere_ids = obstacle_ids
+        cube_env_ids = torch.empty(0, dtype=torch.long)
+        cube_ids = torch.empty(0, dtype=torch.long)
+
         p_spheres = obstacle_manager.get_obstacle_positions() # [num_envs, n_spheres, 3]
         r_spheres = obstacle_manager.get_obstacle_radii()     # [num_envs, n_spheres]
-        
+        p_cubes = obstacle_manager.get_cube_positions()
+        lwh_cubes = obstacle_manager.get_cube_lwh()
+        rpy_cubes = obstacle_manager.get_cube_rpy()
+
         depth, _ = get_ray_dist(
             sphere_ray_dists=sphere_ray_dists,
             sphere_env_ids=sphere_env_ids,
             sphere_ids=sphere_ids,
-            p_spheres=p_spheres, 
-            r_spheres=r_spheres, 
-            
+            p_spheres=p_spheres,
+            r_spheres=r_spheres,
+
             cube_ray_dists=cube_ray_dists,
             cube_env_ids=cube_env_ids,
             cube_ids=cube_ids,
-            p_cubes=torch.empty((pos.shape[0], 0, 3), device=self.device), # Dummy
-            lwh_cubes=torch.empty((pos.shape[0], 0, 3), device=self.device), # Dummy
-            rpy_cubes=torch.empty((pos.shape[0], 0, 3), device=self.device), # Dummy
+            p_cubes=p_cubes,
+            lwh_cubes=lwh_cubes,
+            rpy_cubes=rpy_cubes,
 
-            
             start=ray_starts,
             ray_directions_b=self.sensor2body(self.ray_directions), # [num_envs, n_rays, 3]
             quat_xyzw=quat_xyzw,
@@ -347,13 +373,156 @@ class RelativePositionSensor:
         return sorted_obst_relpos
 
 
+class IMUSensor:
+    """IMU sensor with complete noise and drift model.
+
+    Models:
+    - Accelerometer: drift (bias random walk) + noise (white noise)
+    - Gyroscope: drift (bias random walk) + noise (white noise)
+    - Pose drift: integrated gyro error
+    - Mounting error: small rotation offset
+    """
+    def __init__(self, cfg, num_envs: int, device: torch.device):
+        self.num_envs = num_envs
+        self.device = device
+        self.dt = 0.01  # Will be overridden if provided
+        self.sqrt_dt = 0.1
+
+        # Drift parameters (per sqrt timestep)
+        self._acc_drift_base = cfg.acc_drift_std
+        self._gyro_drift_base = cfg.gyro_drift_std
+        self._acc_noise_base = cfg.acc_noise_std
+        self._gyro_noise_base = cfg.gyro_noise_std
+        self.acc_drift_std = self._acc_drift_base * self.sqrt_dt
+        self.gyro_drift_std = self._gyro_drift_base * self.sqrt_dt
+        # Noise parameters (per timestep / sqrt timestep)
+        self.acc_noise_std = self._acc_noise_base / self.sqrt_dt
+        self.gyro_noise_std = self._gyro_noise_base / self.sqrt_dt
+
+        # Mounting error range
+        self.mounting_range_rad = cfg.imu_mounting_error_range_deg * math.pi / 180.0
+
+        factory_kwargs = {"device": device, "dtype": torch.float32}
+
+        # State: drift (bias random walk states)
+        self.acc_drift_b = torch.zeros((num_envs, 3), **factory_kwargs)  # accelerometer bias drift
+        self.gyro_drift_b = torch.zeros((num_envs, 3), **factory_kwargs)  # gyro bias drift
+        self.pose_drift_b = torch.zeros((num_envs, 3), **factory_kwargs)  # integrated pose drift from gyro
+
+        # State: noise (white noise, uncorrelated each step)
+        self.acc_noise_b = torch.zeros((num_envs, 3), **factory_kwargs)
+        self.gyro_noise_b = torch.zeros((num_envs, 3), **factory_kwargs)
+
+        # Mounting quaternion (small random rotation)
+        self.mounting_quat_xyzw = torch.zeros((num_envs, 4), **factory_kwargs)
+
+        self.enable_drift = int(cfg.enable_drift)
+        self.enable_noise = int(cfg.enable_noise)
+
+    def set_dt(self, dt: float):
+        """Set simulation timestep after initialization."""
+        self.dt = dt
+        self.sqrt_dt = math.sqrt(dt)
+        # Recalculate scaled stds from base cfg values
+        self.acc_drift_std = self._acc_drift_base * self.sqrt_dt
+        self.gyro_drift_std = self._gyro_drift_base * self.sqrt_dt
+        self.acc_noise_std = self._acc_noise_base / self.sqrt_dt
+        self.gyro_noise_std = self._gyro_noise_base / self.sqrt_dt
+
+    def sensor2body(self, vec_s: Tensor) -> Tensor:
+        """Transform vector from sensor frame to body frame."""
+        return quat_rotate(self.mounting_quat_xyzw, vec_s)
+
+    def body2sensor(self, vec_b: Tensor) -> Tensor:
+        """Transform vector from body frame to sensor frame."""
+        return quat_rotate_inverse(self.mounting_quat_xyzw, vec_b)
+
+    def reset_idx(self, env_idx: Tensor):
+        """Reset IMU state for specified environments."""
+        n_selected = env_idx.shape[0]
+        # Sample new mounting error
+        mounting_euler = (torch.rand(n_selected, 3, device=self.device) * 2 - 1) * self.mounting_range_rad
+        self.mounting_quat_xyzw[env_idx] = euler_to_quaternion(
+            mounting_euler[..., 0], mounting_euler[..., 1], mounting_euler[..., 2]
+        )
+        # Reset all drift and noise states
+        self.acc_drift_b[env_idx] = torch.zeros(n_selected, 3, device=self.device, dtype=torch.float)
+        self.gyro_drift_b[env_idx] = torch.zeros(n_selected, 3, device=self.device, dtype=torch.float)
+        self.pose_drift_b[env_idx] = torch.zeros(n_selected, 3, device=self.device, dtype=torch.float)
+        self.acc_noise_b[env_idx] = torch.zeros(n_selected, 3, device=self.device, dtype=torch.float)
+        self.gyro_noise_b[env_idx] = torch.zeros(n_selected, 3, device=self.device, dtype=torch.float)
+
+    def step(self):
+        """Update drift and noise states for one timestep."""
+        # Gyro drift random walk + noise
+        self.gyro_drift_b += self.sensor2body(torch.randn_like(self.gyro_drift_b) * self.gyro_drift_std)
+        self.gyro_noise_b = self.sensor2body(torch.randn_like(self.gyro_noise_b) * self.gyro_noise_std)
+
+        # Pose drift = integrated gyro error
+        gyro_error = self.enable_drift * self.gyro_drift_b + self.enable_noise * self.gyro_noise_b
+        self.pose_drift_b += gyro_error * self.dt
+
+        # Accelerometer drift random walk + noise
+        self.acc_drift_b += self.sensor2body(torch.randn_like(self.acc_drift_b) * self.acc_drift_std)
+        self.acc_noise_b = self.sensor2body(torch.randn_like(self.acc_noise_b) * self.acc_noise_std)
+
+    def __call__(
+        self,
+        pos_w: Tensor,       # [num_envs, 3] true position in world
+        quat_xyzw: Tensor,   # [num_envs, 4] true quaternion
+        vel_w: Tensor,       # [num_envs, 3] true velocity in world
+        acc_w: Tensor,       # [num_envs, 3] true acceleration in world
+    ) -> dict:
+        """Compute IMU measurements from true dynamics state.
+
+        Returns:
+            dict with keys:
+                'acc_b': accelerometer reading in body frame [num_envs, 3]
+                'gyro_b': gyroscope reading in body frame [num_envs, 3]
+                'pos_w': position in world frame (with drift) [num_envs, 3]
+                'quat': quaternion (with pose drift) [num_envs, 4]
+        """
+        # True acceleration in body frame
+        acc_b_true = quat_rotate_inverse(quat_xyzw, acc_w)
+
+        # Accelerometer: true + drift (bias random walk) + noise (white)
+        acc_b_measured = (
+            acc_b_true
+            + self.enable_drift * self.acc_drift_b
+            + self.enable_noise * self.acc_noise_b
+        )
+
+        # Gyroscope: assume no true angular rate input, just drift + noise
+        # In real IMU this would include body rotation, but here we model sensor noise only
+        gyro_b_measured = (
+            self.enable_drift * self.gyro_drift_b
+            + self.enable_noise * self.gyro_noise_b
+        )
+
+        # Position with drift
+        pos_w_measured = pos_w + self.pose_drift_b
+
+        # Quaternion with pose drift applied
+        pose_drift_euler = self.pose_drift_b
+        pose_drift_quat = euler_to_quaternion(pose_drift_euler[..., 0], pose_drift_euler[..., 1], pose_drift_euler[..., 2])
+        quat_measured = quat_mul(quat_xyzw, pose_drift_quat)
+
+        return {
+            "acc_b": acc_b_measured,
+            "gyro_b": gyro_b_measured,
+            "pos_w": pos_w_measured,
+            "quat": quat_measured,
+        }
+
+
 def create_sensor(cfg, num_envs: int, device: torch.device):
     if cfg is None:
         return None
-        
+
     sensor_alias = {
         "camera": CameraSensor,
         "lidar": LiDARSensor,
         "relpos": RelativePositionSensor,
+        "imu": IMUSensor,
     }
     return sensor_alias[cfg.name](cfg, num_envs, device)
