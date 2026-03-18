@@ -288,7 +288,7 @@ class ContinuousPointMass(_PointMassBase):
             vel = state[:, 7:10]
 
             acc = self._control_tensor * inv_mass + self.gravity - self.config.drag_coeff * inv_mass * vel
-            next_pos = pos + sub_dt * vel
+            next_pos = pos + sub_dt * vel + 0.5 * (sub_dt ** 2) * acc
             next_vel = vel + sub_dt * acc
 
             next_state = state.clone()

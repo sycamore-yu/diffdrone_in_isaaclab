@@ -133,6 +133,29 @@ def test_pointmass_normalized_actions_support_bidirectional_xy_control():
     assert vel[1].item() == pytest.approx(0.2, rel=1e-5)
     assert vel[2].item() == pytest.approx(-0.781, rel=1e-5)
 
+
+def test_continuous_pointmass_applies_acceleration_to_position_within_first_step():
+    """Continuous point-mass integration should not lag one step behind acceleration."""
+    pm = create_dynamics(
+        ContinuousPointMassCfg(
+            num_envs=1,
+            dt=0.1,
+            requires_grad=False,
+            mass=1.0,
+            drag_coeff=0.0,
+            max_acc_xy=2.0,
+            max_acc_z=4.0,
+        ),
+        device="cpu",
+    )
+
+    pm.apply_control(torch.tensor([[1.0, 0.5, 0.0]], dtype=torch.float32))
+    pm.integrate()
+    state = pm.get_flat_state()[0]
+
+    assert state[0].item() == pytest.approx(0.01, rel=1e-5)
+    assert state[7].item() == pytest.approx(0.2, rel=1e-5)
+
 if __name__ == "__main__":
     test_pointmass_dynamics_forward_and_backward()
     print("PointMass integration and gradient test passed.")
