@@ -36,6 +36,11 @@ class ObstacleManager:
             device=device
         )  # x, y, z, radius
 
+        # Cube buffers: [num_envs, num_cubes, 3], [num_envs, num_cubes, 3], [num_envs, num_cubes, 3]
+        self.p_cubes = torch.zeros(num_envs, self.cfg.num_cubes, 3, device=device)  # position
+        self.lwh_cubes = torch.full((num_envs, self.cfg.num_cubes, 3), self.cfg.cube_size, device=device)  # length, width, height
+        self.rpy_cubes = torch.zeros(num_envs, self.cfg.num_cubes, 3, device=device)  # roll, pitch, yaw
+
         # Initialize obstacles
         self._spawn_obstacles()
 
@@ -130,6 +135,35 @@ class ObstacleManager:
             Tensor of shape [num_envs, num_obstacles].
         """
         return self.obstacles[:, :, 3]
+
+    def get_cube_positions(self) -> torch.Tensor:
+        """Get cube positions.
+
+        Returns:
+            Tensor of shape [num_envs, num_cubes, 3].
+        """
+        return self.p_cubes
+
+    def get_cube_lwh(self) -> torch.Tensor:
+        """Get cube dimensions (length, width, height).
+
+        Returns:
+            Tensor of shape [num_envs, num_cubes, 3].
+        """
+        return self.lwh_cubes
+
+    def get_cube_rpy(self) -> torch.Tensor:
+        """Get cube rotations (roll, pitch, yaw).
+
+        Returns:
+            Tensor of shape [num_envs, num_cubes, 3].
+        """
+        return self.rpy_cubes
+
+    @property
+    def num_cubes(self) -> int:
+        """Number of cube obstacles."""
+        return self.cfg.num_cubes
 
     def compute_distances(self, positions: torch.Tensor) -> torch.Tensor:
         """Compute distances from positions to all obstacles.

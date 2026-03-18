@@ -32,6 +32,10 @@ class ObstacleTaskCfg:
     )
     obstacle_radius: float = OBSTACLE_COLLISION_RADIUS
 
+    # Cube obstacles (mixed geometry)
+    num_cubes: int = 0
+    cube_size: float = 1.0  # Length, width, height of cubes
+
     # Collision parameters
     collision_radius: float = COLLISION_RADIUS
     risk_distance_warning: float = RISK_DISTANCE_WARNING
