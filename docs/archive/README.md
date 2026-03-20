@@ -1,9 +1,12 @@
-# Archived Docs
+# Archive Redirect
 
-These files are historical snapshots from earlier audit and remediation passes.
+历史审计与整改文档已迁移到：
 
-Use them for background only. Current source-of-truth documents live in the parent `docs/` directory:
+- `../exec-plans/completed/`
 
-- `development.md`
-- `progress.md`
-- `regression_matrix.md`
+当前 source-of-truth 仍在：
+
+- `../development.md`
+- `../progress.md`
+- `../regression_matrix.md`
+- `../harness.md`
